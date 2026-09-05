@@ -29,10 +29,6 @@ function providerLabel(provider: ServerProvider): string {
   );
 }
 
-function roundedUsage(usedPercent: number): number {
-  return Math.round(Math.max(0, Math.min(100, usedPercent)));
-}
-
 function windowColor(provider: ServerProvider): string {
   return provider.accentColor ?? "var(--foreground)";
 }
@@ -46,8 +42,7 @@ function UsageWindowRow({
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
 }) {
-  const used = roundedUsage(window.usedPercent);
-  const remaining = remainingUsagePercent(used);
+  const remaining = remainingUsagePercent(window.usedPercent);
   const resetsIn = formatResetsIn(window, now);
 
   return (
