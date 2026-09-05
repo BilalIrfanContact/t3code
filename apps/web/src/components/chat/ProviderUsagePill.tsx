@@ -14,6 +14,7 @@ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import {
   highestUsageWindow,
   providersWithReportedUsage,
+  remainingUsagePercent,
   selectCollapsedUsageProvider,
   type ProviderWithReportedUsage,
 } from "./ProviderUsagePill.logic";
@@ -46,25 +47,28 @@ function UsageWindowRow({
   readonly now: number;
 }) {
   const used = roundedUsage(window.usedPercent);
+  const remaining = remainingUsagePercent(used);
   const resetsIn = formatResetsIn(window, now);
 
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-3 text-xs">
         <span className="min-w-0 truncate text-muted-foreground">{window.label}</span>
-        <span className="shrink-0 font-medium text-foreground tabular-nums">{used}% used</span>
+        <span className="shrink-0 font-medium text-foreground tabular-nums">
+          {remaining}% remaining
+        </span>
       </div>
       <div
         role="progressbar"
-        aria-label={`${window.label}: ${used}% used`}
+        aria-label={`${window.label}: ${remaining}% remaining`}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-valuenow={used}
+        aria-valuenow={remaining}
         className="h-1.5 overflow-hidden rounded-full bg-muted/70"
       >
         <div
           className="h-full rounded-full transition-[width] duration-300 ease-out motion-reduce:transition-none"
-          style={{ width: `${used}%`, backgroundColor: windowColor(provider) }}
+          style={{ width: `${remaining}%`, backgroundColor: windowColor(provider) }}
         />
       </div>
       {resetsIn ? (
@@ -145,7 +149,9 @@ export function ProviderUsagePill({
     usageProviders.find((provider) => provider.instanceId === selectedInstanceId) ??
     collapsedProvider;
   const label = providerLabel(collapsedProvider);
-  const collapsedUsage = roundedUsage(highestUsageWindow(collapsedProvider).usedPercent);
+  const collapsedRemaining = remainingUsagePercent(
+    highestUsageWindow(collapsedProvider).usedPercent,
+  );
   const selectedLabel = providerLabel(selectedProvider);
   const updated = formatRelativeTimeLabel(selectedProvider.usageLimits.checkedAt);
 
@@ -164,7 +170,7 @@ export function ProviderUsagePill({
         render={
           <button
             type="button"
-            aria-label={`${label} usage: ${collapsedUsage}% used`}
+            aria-label={`${label} usage: ${collapsedRemaining}% remaining`}
             className="group/usage-pill relative flex h-7 shrink-0 cursor-pointer items-center gap-1.5 overflow-hidden rounded-full border border-border/70 bg-secondary/80 px-2.5 text-xs font-medium text-foreground shadow-xs outline-none transition-[background-color,border-color,box-shadow,scale] [-webkit-app-region:no-drag] hover:border-border hover:bg-secondary active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-ring data-pressed:bg-accent"
           >
             <ProviderInstanceIcon
@@ -176,11 +182,11 @@ export function ProviderUsagePill({
             <span className="hidden max-w-20 truncate text-muted-foreground sm:inline">
               {label}
             </span>
-            <span className="tabular-nums">{collapsedUsage}%</span>
+            <span className="tabular-nums">{collapsedRemaining}%</span>
             <span
               aria-hidden
               className="absolute inset-x-2 bottom-0 h-px origin-left rounded-full bg-foreground/45"
-              style={{ transform: `scaleX(${collapsedUsage / 100})` }}
+              style={{ transform: `scaleX(${collapsedRemaining / 100})` }}
             />
           </button>
         }
