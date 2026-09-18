@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { createStaticNavigation } from "@react-navigation/native";
+import { createPersistedThreadDiscoverySession } from "@t3tools/client-runtime/state/server";
 
 import { RegistryContext } from "@effect/atom-react";
 import { ThreadArrangementHost } from "./features/threads/ThreadArrangementSheet";
@@ -42,6 +43,26 @@ const appLinking = {
 };
 
 const Navigation = createStaticNavigation(RootStack);
+const persistedThreadDiscoverySession = createPersistedThreadDiscoverySession();
+
+function PersistedThreadsBootstrap() {
+  const { environments } = useEnvironments();
+  const discoverPersistedThreads = useAtomCommand(serverEnvironment.discoverPersistedThreads, {
+    reportFailure: false,
+  });
+
+  useEffect(() => {
+    persistedThreadDiscoverySession.check(
+      environments.map((environment) => ({
+        environmentId: environment.environmentId,
+        connected: environment.connection.phase === "connected",
+      })),
+      (environmentId) => discoverPersistedThreads({ environmentId, input: {} }),
+    );
+  }, [discoverPersistedThreads, environments]);
+
+  return null;
+}
 
 function SplashScreenCoordinator() {
   const { isReady } = useAppearancePreferences();

@@ -175,6 +175,7 @@ describe("ProviderCommandReactor", () => {
     readonly initialTitle?: string;
     readonly deferReactorStart?: boolean;
     readonly threadModelSelection?: ModelSelection;
+    readonly unavailableProviderInstanceIds?: ReadonlySet<ProviderInstanceId>;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly requiresNewThreadForModelChange?: boolean;
     readonly unreadableHistory?: boolean;
@@ -374,6 +375,15 @@ describe("ProviderCommandReactor", () => {
         }),
       assertConversationRollbackSupported: () => unsupported(),
       getInstanceInfo: (instanceId) => {
+        if (input?.unavailableProviderInstanceIds?.has(instanceId)) {
+          return Effect.fail(
+            new ProviderAdapterRequestError({
+              provider: "codex",
+              method: "thread.turn.start",
+              detail: `Provider instance '${instanceId}' is unavailable in this test harness.`,
+            }),
+          );
+        }
         const raw = String(instanceId);
         const driverKind = ProviderDriverKind.make(
           raw.startsWith("claude")
@@ -469,14 +479,14 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
       Layer.provideMerge(
-        Layer.succeed(ProviderSessionDirectory, {
+        Layer.mock(ProviderSessionDirectory)({
           getBinding: () =>
             Effect.succeed(
               input?.persistedProviderBinding === undefined
                 ? Option.none()
                 : Option.some(input.persistedProviderBinding),
             ),
-        } as ProviderSessionDirectory["Service"]),
+        }),
       ),
       Layer.provide(Layer.mock(ProviderAuthService, { tryHandlePromptCommand })),
       Layer.provideMerge(makeProviderRegistryLayer(providerSnapshots as never)),
@@ -947,6 +957,59 @@ describe("ProviderCommandReactor", () => {
       });
     }),
   );
+
+  it("starts an imported thread after provider ownership is handed off", async () => {
+    const threadId = ThreadId.make("thread-1");
+    const oldInstanceId = ProviderInstanceId.make("codex-old");
+    const currentInstanceId = ProviderInstanceId.make("codex-current");
+    const harness = await createHarness({
+      threadModelSelection: { instanceId: oldInstanceId, model: "gpt-5-codex" },
+      unavailableProviderInstanceIds: new Set([oldInstanceId]),
+      persistedProviderBinding: {
+        threadId,
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: currentInstanceId,
+        resumeCursor: { threadId: "provider-thread-1" },
+        runtimePayload: {
+          imported: true,
+          cwd: "/tmp/original-codex-workspace",
+          modelSelection: { instanceId: currentInstanceId, model: "gpt-5-codex" },
+        },
+      },
+    });
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-imported-owner-handoff"),
+        threadId,
+        modelSelection: { instanceId: currentInstanceId, model: "gpt-5-codex" },
+      }),
+    );
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-imported-owner-handoff-turn-start"),
+        threadId,
+        message: {
+          messageId: asMessageId("imported-owner-handoff-message"),
+          role: "user",
+          text: "Continue after the provider handoff",
+          attachments: [],
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      providerInstanceId: currentInstanceId,
+      modelSelection: { instanceId: currentInstanceId, model: "gpt-5-codex" },
+      cwd: "/tmp/original-codex-workspace",
+    });
+  });
 
   effectIt.effect("retains a turn dispatched immediately after start until activation", () =>
     Effect.gen(function* () {

@@ -106,7 +106,6 @@ import {
   ProviderUploadFeedbackResult,
 } from "./provider.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import {
   PullRequestActionInput,
   PullRequestActivity,

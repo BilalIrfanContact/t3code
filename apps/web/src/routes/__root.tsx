@@ -1,5 +1,6 @@
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { createPersistedThreadDiscoverySession } from "@t3tools/client-runtime/state/server";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Outlet,
@@ -46,7 +47,6 @@ import { resolveAndPersistPreferredEditor } from "../editorPreferences";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
 import { applyAppearanceContrast } from "~/appearanceContrast";
 import { useClientSettings } from "../hooks/useSettings";
-import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { PlanAgentSelectionHeal } from "../planAgentSelectionHeal";
 import {
   deriveLogicalProjectKeyFromSettings,
@@ -68,12 +68,7 @@ import {
 } from "../state/server";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
-import {
-  readProject,
-  setActiveEnvironmentId,
-  useActiveEnvironmentId,
-  useProjects,
-} from "../state/entities";
+import { readProject, setActiveEnvironmentId, useActiveEnvironmentId } from "../state/entities";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
   createKeybindingsUpdateToastController,

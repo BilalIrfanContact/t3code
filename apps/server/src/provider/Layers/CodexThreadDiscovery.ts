@@ -36,10 +36,16 @@ function unixSecondsToIso(seconds: number): string {
   return DateTime.formatIso(DateTime.makeUnsafe(seconds * 1_000));
 }
 
-function discoveryCursorForThread(
-  thread: EffectCodexSchema.V2ThreadListResponse["data"][number],
-): string {
-  return `${unixSecondsToIso(thread.updatedAt)}:${thread.status.type}`;
+function discoveryCursorForThread(thread: {
+  readonly updatedAt: number;
+  readonly status: { readonly type: string };
+  readonly cwd: string;
+}): string {
+  return JSON.stringify([
+    unixSecondsToIso(thread.updatedAt),
+    thread.status.type,
+    normalizeProjectPathForComparison(thread.cwd),
+  ]);
 }
 
 export function selectCodexThreadsForRead(
@@ -52,16 +58,6 @@ export function selectCodexThreadsForRead(
       (typeof thread.source === "object" && "subAgent" in thread.source) ||
       thread.threadSource === "memory_consolidation" ||
       discoveryInput?.excludeProviderThreadIds.has(thread.id) === true
-    ) {
-      return false;
-    }
-    if (
-      discoveryInput?.workspaceRoots !== undefined &&
-      !Array.from(discoveryInput.workspaceRoots).some(
-        (workspaceRoot) =>
-          normalizeProjectPathForComparison(workspaceRoot) ===
-          normalizeProjectPathForComparison(thread.cwd),
-      )
     ) {
       return false;
     }

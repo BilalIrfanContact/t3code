@@ -596,6 +596,44 @@ function serverWelcomeStateChanges(environmentId: EnvironmentId) {
   );
 }
 
+export interface PersistedThreadDiscoveryEnvironment {
+  readonly environmentId: EnvironmentId;
+  readonly connected: boolean;
+}
+
+/** Tracks the one persisted-thread discovery request allowed per environment and app opening. */
+export function createPersistedThreadDiscoverySession() {
+  const requestedEnvironmentIds = new Set<EnvironmentId>();
+
+  return {
+    check(
+      environments: ReadonlyArray<PersistedThreadDiscoveryEnvironment>,
+      discover: (environmentId: EnvironmentId) => Promise<unknown>,
+    ): void {
+      for (const environment of environments) {
+        if (!environment.connected || requestedEnvironmentIds.has(environment.environmentId)) {
+          continue;
+        }
+        requestedEnvironmentIds.add(environment.environmentId);
+        void discover(environment.environmentId)
+          .then((result) => {
+            if (
+              typeof result === "object" &&
+              result !== null &&
+              "_tag" in result &&
+              result._tag === "Failure"
+            ) {
+              requestedEnvironmentIds.delete(environment.environmentId);
+            }
+          })
+          .catch(() => {
+            requestedEnvironmentIds.delete(environment.environmentId);
+          });
+      }
+    },
+  };
+}
+
 export function resolveServerConfigValue(
   projection: ServerConfigProjection | null,
   initialConfig: ServerConfig | null,
@@ -1078,7 +1116,7 @@ export function createServerEnvironmentAtoms<R, E>(
       tag: WS_METHODS.providerDiscoverPersistedThreads,
       concurrency: {
         mode: "singleFlight",
-        key: ({ environmentId, input }) => `${environmentId}:${input.workspaceRoot}`,
+        key: ({ environmentId }) => environmentId,
       },
     }),
     updateProvider: createEnvironmentRpcCommand(runtime, {
