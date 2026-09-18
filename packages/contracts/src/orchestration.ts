@@ -607,6 +607,16 @@ export const OrchestrationSession = Schema.Struct({
 });
 export type OrchestrationSession = typeof OrchestrationSession.Type;
 
+/** Provider-native identity and metadata retained for imported conversations. */
+export const OrchestrationProviderThreadMetadata = Schema.Struct({
+  provider: ProviderDriverKind,
+  providerThreadId: TrimmedNonEmptyString,
+  updatedAt: IsoDateTime,
+  status: Schema.Unknown,
+  sourceMetadata: Schema.Unknown,
+});
+export type OrchestrationProviderThreadMetadata = typeof OrchestrationProviderThreadMetadata.Type;
+
 export const OrchestrationCheckpointFile = Schema.Struct({
   path: TrimmedNonEmptyString,
   kind: TrimmedNonEmptyString,
@@ -789,6 +799,7 @@ export const OrchestrationThread = Schema.Struct({
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  providerThreadMetadata: Schema.optional(Schema.NullOr(OrchestrationProviderThreadMetadata)),
   archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -875,6 +886,7 @@ export const OrchestrationThreadShell = Schema.Struct({
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  providerThreadMetadata: Schema.optional(Schema.NullOr(OrchestrationProviderThreadMetadata)),
   archivedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   settledOverride: Schema.NullOr(Schema.Literals(["settled", "active"])).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -1208,6 +1220,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   type: Schema.Literal("thread.meta.update"),
   commandId: CommandId,
   threadId: ThreadId,
+  projectId: Schema.optional(ProjectId),
   title: Schema.optional(TrimmedNonEmptyString),
   regenerateTitle: Schema.optional(Schema.Literal(true)),
   modelSelection: Schema.optional(ModelSelection),
@@ -1215,6 +1228,7 @@ const ThreadMetaUpdateCommand = Schema.Struct({
   expectedBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  providerThreadMetadata: Schema.optional(Schema.NullOr(OrchestrationProviderThreadMetadata)),
 }).check(
   Schema.makeFilter(
     (input) =>
@@ -1627,6 +1641,7 @@ const InternalOrchestrationCommand = Schema.Union([
   ThreadPullRequestSyncCommand,
   ThreadPullRequestLinkSyncCommand,
   ThreadSessionSetCommand,
+  ThreadMessageImportCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,
   ThreadMessageReasoningDeltaCommand,
@@ -1737,6 +1752,7 @@ export const ThreadCreatedPayload = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
+  providerThreadMetadata: Schema.optional(Schema.NullOr(OrchestrationProviderThreadMetadata)),
 });
 
 export const ThreadDeletedPayload = Schema.Struct({

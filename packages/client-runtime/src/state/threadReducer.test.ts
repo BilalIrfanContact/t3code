@@ -7,6 +7,7 @@ import {
   EventId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
   TurnId,
@@ -93,6 +94,13 @@ describe("applyThreadDetailEvent", () => {
           worktreePath: null,
           createdAt: "2026-04-01T01:00:00.000Z",
           updatedAt: "2026-04-01T01:00:00.000Z",
+          providerThreadMetadata: {
+            provider: ProviderDriverKind.make("codex"),
+            providerThreadId: "provider-thread-2",
+            updatedAt: "2026-04-01T01:00:00.000Z",
+            status: { type: "idle" },
+            sourceMetadata: { cwd: "/repo" },
+          },
         },
       });
 
@@ -103,6 +111,13 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.branch).toBe("main");
         expect(result.thread.messages).toEqual([]);
         expect(result.thread.session).toBeNull();
+        expect(result.thread.providerThreadMetadata).toEqual({
+          provider: "codex",
+          providerThreadId: "provider-thread-2",
+          updatedAt: "2026-04-01T01:00:00.000Z",
+          status: { type: "idle" },
+          sourceMetadata: { cwd: "/repo" },
+        });
       }
     });
   });

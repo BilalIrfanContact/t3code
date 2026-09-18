@@ -2577,6 +2577,25 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
       })),
     );
 
+  const discoverPersistedThreads: NonNullable<CodexAdapterShape["discoverPersistedThreads"]> = (
+    input,
+  ) =>
+    Effect.scoped(
+      discoverCodexThreads(codexConfig, options?.environment, input).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, childProcessSpawner),
+        Effect.timeout("2 minutes"),
+        Effect.mapError(
+          (cause) =>
+            new ProviderAdapterRequestError({
+              provider: PROVIDER,
+              method: "thread/list",
+              detail: cause.message,
+              cause,
+            }),
+        ),
+      ),
+    );
+
   const rollbackThread: CodexAdapterShape["rollbackThread"] = (threadId, numTurns) => {
     if (!Number.isInteger(numTurns) || numTurns < 1) {
       return Effect.fail(
@@ -2711,6 +2730,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     compaction: { type: "native", start: compactThread },
     interruptTurn,
     readThread,
+    discoverPersistedThreads,
     rollbackThread,
     uploadFeedback,
     respondToRequest,

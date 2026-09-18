@@ -11,6 +11,7 @@ import {
   IsoDateTime,
   ModelSelection,
   NonNegativeInt,
+  OrchestrationProviderThreadMetadata,
   ProjectId,
   ProviderInteractionMode,
   RuntimeMode,
