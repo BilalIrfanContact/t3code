@@ -984,6 +984,15 @@ const WsAttachmentsDeleteRpc = Rpc.make(WS_METHODS.attachmentsDelete, {
   error: EnvironmentAuthorizationError,
 });
 
+const WsProviderDiscoverPersistedThreadsRpc = Rpc.make(
+  WS_METHODS.providerDiscoverPersistedThreads,
+  {
+    payload: Schema.Struct({}),
+    success: Schema.Struct({ importedCount: NonNegativeInt }),
+    error: Schema.Union([ProviderPersistedThreadDiscoveryError, EnvironmentAuthorizationError]),
+  },
+);
+
 const WsProviderUploadFeedbackRpc = Rpc.make(WS_METHODS.providerUploadFeedback, {
   payload: ProviderUploadFeedbackInput,
   success: ProviderUploadFeedbackResult,

@@ -385,6 +385,7 @@ function toRuntimePayloadFromSession(
   extra?: {
     readonly modelSelection?: unknown;
     readonly continueAfterServerUpdate?: TurnId;
+    readonly continuationKey?: string;
     readonly lastRuntimeEvent?: string;
     readonly lastRuntimeEventAt?: string;
   },

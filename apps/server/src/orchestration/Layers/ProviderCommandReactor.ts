@@ -91,6 +91,17 @@ function toNonEmptyProviderInput(value: string | undefined): string | undefined 
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
 
+function readImportedThreadCwd(runtimePayload: unknown): string | undefined {
+  if (!runtimePayload || typeof runtimePayload !== "object" || Array.isArray(runtimePayload)) {
+    return undefined;
+  }
+  if (!("imported" in runtimePayload) || runtimePayload.imported !== true) {
+    return undefined;
+  }
+  const cwd = "cwd" in runtimePayload ? runtimePayload.cwd : undefined;
+  return typeof cwd === "string" && cwd.trim().length > 0 ? cwd : undefined;
+}
+
 const isCompactCommandMessage = (message: ThreadTitleMessage): boolean =>
   message.role === "user" &&
   (message.attachments?.length ?? 0) === 0 &&

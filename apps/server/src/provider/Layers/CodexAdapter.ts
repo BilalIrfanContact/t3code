@@ -71,6 +71,7 @@ import {
 } from "./CodexSessionRuntime.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import { resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
+import { discoverCodexThreads } from "./CodexThreadDiscovery.ts";
 import {
   type CodexRateLimitSnapshot,
   codexRateLimitsToUpdate,

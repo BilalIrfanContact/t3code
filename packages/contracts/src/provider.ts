@@ -138,6 +138,17 @@ export class ProviderUploadFeedbackError extends Schema.TaggedError<ProviderUplo
   }
 }
 
+export class ProviderPersistedThreadDiscoveryError extends Schema.TaggedError<ProviderPersistedThreadDiscoveryError>()(
+  "ProviderPersistedThreadDiscoveryError",
+  {
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return "Failed to discover persisted provider threads.";
+  }
+}
+
 const ProviderEventKind = Schema.Literals(["session", "notification", "request", "error"]);
 
 export const ProviderEvent = Schema.Struct({

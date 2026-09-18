@@ -175,6 +175,8 @@ describe("ProviderCommandReactor", () => {
     readonly initialTitle?: string;
     readonly deferReactorStart?: boolean;
     readonly threadModelSelection?: ModelSelection;
+    readonly persistedProviderBinding?: ProviderRuntimeBinding;
+    readonly projectWorkspaceRoot?: string;
     readonly unavailableProviderInstanceIds?: ReadonlySet<ProviderInstanceId>;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly requiresNewThreadForModelChange?: boolean;

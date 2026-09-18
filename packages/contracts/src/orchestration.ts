@@ -23,7 +23,7 @@ import {
   TrimmedString,
   TurnId,
 } from "./baseSchemas.ts";
-import { ProviderInstanceId } from "./providerInstance.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import {
   PullRequestActor,
   PullRequestChecksState,
@@ -1116,6 +1116,7 @@ const ThreadCreateCommand = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   createdAt: IsoDateTime,
+  providerThreadMetadata: Schema.optional(Schema.NullOr(OrchestrationProviderThreadMetadata)),
   historyImport: Schema.optional(Schema.Literal(true)),
 });
 
@@ -1496,6 +1497,17 @@ const ThreadMessageAssistantCompleteCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
+const ThreadMessageImportCommand = Schema.Struct({
+  type: Schema.Literal("thread.message.import"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  messageId: MessageId,
+  role: OrchestrationMessageRole,
+  text: Schema.String,
+  turnId: TurnId,
+  createdAt: IsoDateTime,
+});
+
 const ThreadMessageReasoningDeltaCommand = Schema.Struct({
   type: Schema.Literal("thread.message.reasoning.delta"),
   commandId: CommandId,
@@ -1822,6 +1834,7 @@ export const ThreadPinReorderedPayload = Schema.Struct({
 
 export const ThreadMetaUpdatedPayload = Schema.Struct({
   threadId: ThreadId,
+  projectId: Schema.optional(ProjectId),
   // Order updates use this existing event so older clients can ignore the
   // new field while continuing to decode the event stream.
   activeOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
@@ -1841,6 +1854,7 @@ export const ThreadMetaUpdatedPayload = Schema.Struct({
   // thread.pull-request-linked still decode and replay into the link table.
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
+  providerThreadMetadata: Schema.optional(Schema.NullOr(OrchestrationProviderThreadMetadata)),
   updatedAt: IsoDateTime,
 });
 
