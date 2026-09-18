@@ -9,6 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   highestUsageWindow,
   providersWithReportedUsage,
+  remainingUsagePercent,
   selectCollapsedUsageProvider,
 } from "./ProviderUsagePill.logic";
 
@@ -58,6 +59,13 @@ function provider(
 }
 
 describe("provider usage pill selection", () => {
+  it("converts used percentages to remaining percentages", () => {
+    expect(remainingUsagePercent(7)).toBe(93);
+    expect(remainingUsagePercent(17)).toBe(83);
+    expect(remainingUsagePercent(-10)).toBe(100);
+    expect(remainingUsagePercent(120)).toBe(0);
+  });
+
   it("shows only usable providers with live reported windows", () => {
     const codex = provider("codex", "codex", [usageWindow("five_hour", 42)]);
     const unsupported = provider("claudeAgent", "claudeAgent", [], {

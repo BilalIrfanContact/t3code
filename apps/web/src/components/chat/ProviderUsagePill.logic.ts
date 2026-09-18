@@ -34,6 +34,10 @@ export function highestUsageWindow(provider: ProviderWithReportedUsage): ServerP
   );
 }
 
+export function remainingUsagePercent(usedPercent: number): number {
+  return 100 - Math.round(Math.max(0, Math.min(100, usedPercent)));
+}
+
 /**
  * Prefer the provider bound to the current session. When it cannot report
  * usage, show the provider whose most constrained window is currently fullest.
