@@ -554,6 +554,8 @@ describe("MessagesTimeline attachments", () => {
     const props = baseProps();
     await using screen = await renderTimeline(
       [
+        // The first message row is always mounted, so the recordings go in the second.
+        message("Start of the thread.", { role: "user" }, "opening"),
         message(
           "Two recordings.",
           {
@@ -579,7 +581,7 @@ describe("MessagesTimeline attachments", () => {
     await vi.waitFor(
       async () => {
         await act(() => {
-          void props.listRef.current?.scrollToIndex({ index: 0, animated: false });
+          void props.listRef.current?.scrollToIndex({ index: 1, animated: false });
         });
         expect(screen.container.querySelectorAll("audio")).toHaveLength(2);
       },
