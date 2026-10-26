@@ -695,6 +695,201 @@ export const layer: Layer.Layer<
       });
       let effectiveHandoffs = handoffs;
       let resumeFellBack = false;
+      const userText = projectComposerContextForProvider({
+        text: message.text,
+        records: message.context?.records ?? [],
+      });
+      // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
+      const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
+      const goalCommand = goalDriver && parseGoalCommand(message) !== null;
+      // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
+      const noteContinuation = isRestartNoteContinuation(
+        run,
+        projection.runs,
+        projection.providerTurns,
+        projection.attempts,
+      );
+      const restartCancelledWork = pendingRestartCancelledBackgroundWork({
+        runs: projection.runs,
+        providerTurns: projection.providerTurns,
+        compactionMessageIds: new Set(
+          projection.messages
+            .filter(
+              (candidate) =>
+                isCompactionCommandMessage(candidate) ||
+                (goalDriver && parseGoalCommand(candidate) !== null),
+            )
+            .map((candidate) => candidate.id),
+        ),
+        run,
+        attempts: projection.attempts,
+      });
+      const restartNote =
+        restartCancelledWork.length === 0
+          ? ""
+          : restartCancelledBackgroundWorkNote(restartCancelledWork);
+      const tokenCap = yield* handoffTokenCapConfig.pipe(
+        Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
+      );
+      const handoffContextForThread = (loadedProviderThread: OrchestrationV2ProviderThread) => {
+        const measuredContext = latestNativeContextUsage(projection, providerThread);
+        const previousSelection =
+          measuredContext?.modelSelection ??
+          projection.runs.findLast(
+            (source) =>
+              source.ordinal < run.ordinal &&
+              source.startedAt !== null &&
+              source.providerThreadId === providerThread.id,
+          )?.modelSelection;
+        const sameSelection =
+          previousSelection === undefined ||
+          modelSelectionsEqual(previousSelection, run.modelSelection);
+        const sameNativeThread =
+          loadedProviderThread.nativeThreadRef?.nativeId ===
+          providerThread.nativeThreadRef?.nativeId;
+        const threadUsage = loadedProviderThread.contextUsage ?? providerThread.contextUsage;
+        const previousUsage = measuredContext
+          ? { ...threadUsage, ...measuredContext.usage }
+          : threadUsage;
+        const reuseTelemetry =
+          sameSelection ||
+          (previousSelection !== undefined &&
+            session.canReuseContextUsage?.(previousSelection, run.modelSelection) === true);
+        const knownModelWindow = session.getModelContextWindow?.(
+          run.modelSelection,
+          resolvedRuntimePolicy.cwd,
+        );
+        const handoffUsage = contextUsageForHandoff({
+          sameNativeThread,
+          sameSelection,
+          reuseTelemetry,
+          previousUsage,
+          knownModelWindow,
+        });
+        const settledHandoffs = projection.contextHandoffs.filter(
+          (handoff) =>
+            handoff.toProviderThreadId === providerThread.id &&
+            handoff.delivery?.nativeThreadId === loadedProviderThread.nativeThreadRef?.nativeId &&
+            handoff.delivery?.status !== "pending",
+        );
+        const deliveredItemIds = new Set(
+          settledHandoffs.flatMap((handoff) => handoff.delivery?.itemIds ?? []),
+        );
+        const coveredItemIds = new Set([
+          ...deliveredItemIds,
+          ...settledHandoffs.flatMap((handoff) => handoff.delivery?.omittedItemIds ?? []),
+        ]);
+        const deliveredAttemptIds = new Set(
+          projection.providerTurns.map((turn) => turn.runAttemptId),
+        );
+        const acceptedAttempts = projection.attempts.filter(
+          (source) =>
+            source.providerThreadId === providerThread.id && deliveredAttemptIds.has(source.id),
+        );
+        const nativeInputRunIds = new Set(
+          acceptedAttempts
+            .filter(
+              (source) =>
+                source.nativeThreadId !== undefined &&
+                source.nativeThreadId === loadedProviderThread.nativeThreadRef?.nativeId,
+            )
+            .map((source) => source.runId),
+        );
+        const legacyInputRunIds = new Set(
+          acceptedAttempts
+            .filter((source) => source.nativeThreadId === undefined)
+            .map((source) => source.runId),
+        );
+        const legacyRecoveredRunIds = new Set(
+          projection.runs
+            .filter(
+              (source) =>
+                source.providerThreadId === providerThread.id &&
+                settledHandoffs.some(
+                  (handoff) =>
+                    handoff.strategy === "full_thread_summary" &&
+                    handoff.fromProviderThreadIds.includes(providerThread.id) &&
+                    source.ordinal >= handoff.coveredRunOrdinals.from &&
+                    source.ordinal <= handoff.coveredRunOrdinals.to,
+                ),
+            )
+            .map((source) => source.id),
+        );
+        // Legacy attempts lack native ids; exclude recovered attachments absent from the replacement thread.
+        const nativeContextEstimate = Effect.gen(function* () {
+          return sameNativeThread
+            ? (yield* projectionStore.getTurnStartHistory(input.threadId)).reduce((sum, item) => {
+                if (
+                  item.runId === run.id ||
+                  (item.runId !== null &&
+                    missedRunIds.has(item.runId) &&
+                    !deliveredItemIds.has(item.id)) ||
+                  (item.providerThreadId !== providerThread.id && !deliveredItemIds.has(item.id))
+                )
+                  return sum;
+                const historical = historicalMessage(item);
+                const nativeAttachments =
+                  item.type === "user_message" &&
+                  item.providerThreadId === providerThread.id &&
+                  item.runId !== null &&
+                  (nativeInputRunIds.has(item.runId) ||
+                    (legacyInputRunIds.has(item.runId) &&
+                      !coveredItemIds.has(item.id) &&
+                      !legacyRecoveredRunIds.has(item.runId)))
+                    ? attachmentTokenAllowance(item.attachments)
+                    : 0;
+                return (
+                  sum +
+                  (historical === null ? 0 : Buffer.byteLength(historical.text)) +
+                  nativeAttachments
+                );
+              }, 0)
+            : 0;
+        });
+        const modelContextWindow =
+          knownModelWindow ??
+          (handoffUsage !== null || reuseTelemetry ? previousUsage?.maxTokens : undefined);
+        const budgetProviderThread = {
+          ...loadedProviderThread,
+          contextUsage: handoffUsage,
+        };
+        // The resume fallback summary already covers every earlier run in order. A
+        // retry copy after it would rank older missed requests as the newest history.
+        const missedRuns = projection.runs.filter(
+          (source) =>
+            !resumeFellBack &&
+            source.ordinal < run.ordinal &&
+            source.providerThreadId === providerThread.id &&
+            (source.status === "failed" || source.status === "interrupted") &&
+            !deliveredAttemptIds.has(source.activeAttemptId),
+        );
+        const missedRunIds = new Set(missedRuns.map((source) => source.id));
+        return {
+          sameNativeThread,
+          handoffUsage,
+          deliveredItemIds,
+          coveredItemIds,
+          acceptedAttempts,
+          nativeInputRunIds,
+          legacyInputRunIds,
+          missedRuns,
+          missedRunIds,
+          budget: Effect.gen(function* () {
+            return handoffBudget({
+              tokenCap,
+              modelContextWindow,
+              userText: restartNote === "" ? userText : `${restartNote}\n\n${userText}`,
+              attachments: message.attachments,
+              providerThread: budgetProviderThread,
+              nativeContextEstimate:
+                budgetProviderThread.contextUsage?.usedTokens === undefined
+                  ? yield* nativeContextEstimate
+                  : 0,
+            });
+          }),
+        };
+      };
+      let resumedHandoffContext: ReturnType<typeof handoffContextForThread> | undefined;
       const loadedProviderThread = yield* Effect.gen(function* () {
         if (nativeForkTransfer !== undefined) {
           const sourceProjection = yield* projectionStore.getThreadRecords(
@@ -772,15 +967,47 @@ export const layer: Layer.Layer<
               }),
         );
         if (resumed._tag === "Success") {
-          return resumed.success;
+          const context = handoffContextForThread(resumed.success);
+          context.budget = yield* Effect.cached(context.budget);
+          resumedHandoffContext = context;
+          const fits = yield* deliverContextHandoffs({
+            handoffs,
+            providerThread: { ...resumed.success, id: providerThread.id },
+            budget: context.budget,
+            deferInline: isCompactionCommandMessage(message) || goalCommand,
+            alreadyDeliveredItemIds: context.deliveredItemIds,
+            persist: () => Effect.void,
+          }).pipe(
+            Effect.as(true),
+            Effect.catchTags({ ContextHandoffBudgetError: () => Effect.succeed(false) }),
+          );
+          if (fits) return resumed.success;
+          const freshThread = { ...resumed.success, nativeThreadRef: null };
+          const freshContext = handoffContextForThread(freshThread);
+          const fitsFresh = yield* deliverContextHandoffs({
+            handoffs,
+            providerThread: freshThread,
+            budget: freshContext.budget,
+            alreadyDeliveredItemIds: freshContext.deliveredItemIds,
+            persist: () => Effect.void,
+          }).pipe(
+            Effect.as(true),
+            Effect.catchTags({ ContextHandoffBudgetError: () => Effect.succeed(false) }),
+          );
+          if (!fitsFresh) return resumed.success;
         }
+        resumedHandoffContext = undefined;
 
-        yield* Effect.logWarning("Provider resume failed; attempting a fresh native session", {
+        yield* Effect.logWarning("Recovering provider context in a fresh native session", {
           driver: session.driver,
           providerThreadId: providerThread.id,
           runId,
-          reason: uncertainDelivery ? "uncertain_history_delivery" : "resume_failed",
-          errorTag: resumed.failure._tag,
+          reason: uncertainDelivery
+            ? "uncertain_history_delivery"
+            : resumed._tag === "Success"
+              ? "handoff_budget_exhausted"
+              : "resume_failed",
+          errorTag: resumed._tag === "Failure" ? resumed.failure._tag : "ContextHandoffBudgetError",
         });
         const replacement = yield* loadFromProvider(
           session.ensureThread({
@@ -875,39 +1102,18 @@ export const layer: Layer.Layer<
         return;
       }
       const now = yield* DateTime.now;
-      const measuredContext = latestNativeContextUsage(projection, providerThread);
-      const previousSelection =
-        measuredContext?.modelSelection ??
-        projection.runs.findLast(
-          (source) =>
-            source.ordinal < run.ordinal &&
-            source.startedAt !== null &&
-            source.providerThreadId === providerThread.id,
-        )?.modelSelection;
-      const sameSelection =
-        previousSelection === undefined ||
-        modelSelectionsEqual(previousSelection, run.modelSelection);
-      const sameNativeThread =
-        loadedProviderThread.nativeThreadRef?.nativeId === providerThread.nativeThreadRef?.nativeId;
-      const threadUsage = loadedProviderThread.contextUsage ?? providerThread.contextUsage;
-      const previousUsage = measuredContext
-        ? { ...threadUsage, ...measuredContext.usage }
-        : threadUsage;
-      const reuseTelemetry =
-        sameSelection ||
-        (previousSelection !== undefined &&
-          session.canReuseContextUsage?.(previousSelection, run.modelSelection) === true);
-      const knownModelWindow = session.getModelContextWindow?.(
-        run.modelSelection,
-        resolvedRuntimePolicy.cwd,
-      );
-      const handoffUsage = contextUsageForHandoff({
+      const {
         sameNativeThread,
-        sameSelection,
-        reuseTelemetry,
-        previousUsage,
-        knownModelWindow,
-      });
+        handoffUsage,
+        deliveredItemIds,
+        coveredItemIds,
+        acceptedAttempts,
+        nativeInputRunIds,
+        legacyInputRunIds,
+        missedRuns,
+        missedRunIds,
+        budget,
+      } = resumedHandoffContext ?? handoffContextForThread(loadedProviderThread);
       const runningProviderThread: OrchestrationV2ProviderThread = {
         ...loadedProviderThread,
         contextUsage: handoffUsage,
@@ -1035,140 +1241,6 @@ export const layer: Layer.Layer<
       const routableSubagents = projection.subagents.filter((subagent) =>
         RunExecutionService.canRouteRelatedSubagent(subagent.status),
       );
-      const userText = projectComposerContextForProvider({
-        text: message.text,
-        records: message.context?.records ?? [],
-      });
-      // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
-      const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
-      const goalCommand = goalDriver && parseGoalCommand(message) !== null;
-      // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
-      const noteContinuation = isRestartNoteContinuation(
-        run,
-        projection.runs,
-        projection.providerTurns,
-        projection.attempts,
-      );
-      const restartCancelledWork = pendingRestartCancelledBackgroundWork({
-        runs: projection.runs,
-        providerTurns: projection.providerTurns,
-        compactionMessageIds: new Set(
-          projection.messages
-            .filter(
-              (candidate) =>
-                isCompactionCommandMessage(candidate) ||
-                (goalDriver && parseGoalCommand(candidate) !== null),
-            )
-            .map((candidate) => candidate.id),
-        ),
-        run,
-        attempts: projection.attempts,
-      });
-      const restartNote =
-        restartCancelledWork.length === 0
-          ? ""
-          : restartCancelledBackgroundWorkNote(restartCancelledWork);
-      const tokenCap = yield* handoffTokenCapConfig.pipe(
-        Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
-      );
-      const settledHandoffs = projection.contextHandoffs.filter(
-        (handoff) =>
-          handoff.toProviderThreadId === providerThread.id &&
-          handoff.delivery?.nativeThreadId === runningProviderThread.nativeThreadRef?.nativeId &&
-          handoff.delivery?.status !== "pending",
-      );
-      const deliveredItemIds = new Set(
-        settledHandoffs.flatMap((handoff) => handoff.delivery?.itemIds ?? []),
-      );
-      const coveredItemIds = new Set([
-        ...deliveredItemIds,
-        ...settledHandoffs.flatMap((handoff) => handoff.delivery?.omittedItemIds ?? []),
-      ]);
-      const deliveredAttemptIds = new Set(
-        projection.providerTurns.map((turn) => turn.runAttemptId),
-      );
-      const acceptedAttempts = projection.attempts.filter(
-        (source) =>
-          source.providerThreadId === providerThread.id && deliveredAttemptIds.has(source.id),
-      );
-      const nativeInputRunIds = new Set(
-        acceptedAttempts
-          .filter(
-            (source) =>
-              source.nativeThreadId !== undefined &&
-              source.nativeThreadId === runningProviderThread.nativeThreadRef?.nativeId,
-          )
-          .map((source) => source.runId),
-      );
-      const legacyInputRunIds = new Set(
-        acceptedAttempts
-          .filter((source) => source.nativeThreadId === undefined)
-          .map((source) => source.runId),
-      );
-      const legacyRecoveredRunIds = new Set(
-        projection.runs
-          .filter(
-            (source) =>
-              source.providerThreadId === providerThread.id &&
-              settledHandoffs.some(
-                (handoff) =>
-                  handoff.strategy === "full_thread_summary" &&
-                  handoff.fromProviderThreadIds.includes(providerThread.id) &&
-                  source.ordinal >= handoff.coveredRunOrdinals.from &&
-                  source.ordinal <= handoff.coveredRunOrdinals.to,
-              ),
-          )
-          .map((source) => source.id),
-      );
-      // Legacy attempts lack native ids; exclude recovered attachments absent from the replacement thread.
-      const nativeContextEstimate = Effect.gen(function* () {
-        return sameNativeThread
-          ? (yield* projectionStore.getTurnStartHistory(input.threadId)).reduce((sum, item) => {
-              if (
-                item.runId === run.id ||
-                (item.runId !== null &&
-                  missedRunIds.has(item.runId) &&
-                  !deliveredItemIds.has(item.id)) ||
-                (item.providerThreadId !== providerThread.id && !deliveredItemIds.has(item.id))
-              )
-                return sum;
-              const historical = historicalMessage(item);
-              const nativeAttachments =
-                item.type === "user_message" &&
-                item.providerThreadId === providerThread.id &&
-                item.runId !== null &&
-                (nativeInputRunIds.has(item.runId) ||
-                  (legacyInputRunIds.has(item.runId) &&
-                    !coveredItemIds.has(item.id) &&
-                    !legacyRecoveredRunIds.has(item.runId)))
-                  ? attachmentTokenAllowance(item.attachments)
-                  : 0;
-              return (
-                sum +
-                (historical === null ? 0 : Buffer.byteLength(historical.text)) +
-                nativeAttachments
-              );
-            }, 0)
-          : 0;
-      });
-      const modelContextWindow =
-        knownModelWindow ??
-        (handoffUsage !== null || reuseTelemetry ? previousUsage?.maxTokens : undefined);
-      const budgetProviderThread = {
-        ...runningProviderThread,
-        contextUsage: handoffUsage,
-      };
-      // The resume fallback summary already covers every earlier run in order. A
-      // retry copy after it would rank older missed requests as the newest history.
-      const missedRuns = projection.runs.filter(
-        (source) =>
-          !resumeFellBack &&
-          source.ordinal < run.ordinal &&
-          source.providerThreadId === providerThread.id &&
-          (source.status === "failed" || source.status === "interrupted") &&
-          !deliveredAttemptIds.has(source.activeAttemptId),
-      );
-      const missedRunIds = new Set(missedRuns.map((source) => source.id));
       const missedItems =
         missedRunIds.size === 0
           ? []
@@ -1207,19 +1279,7 @@ export const layer: Layer.Layer<
             handoffs: [...effectiveHandoffs, ...retryHandoff],
             deferInline: compact || goalCommand,
             providerThread: runningProviderThread,
-            budget: Effect.gen(function* () {
-              return handoffBudget({
-                tokenCap,
-                modelContextWindow,
-                userText: restartNote === "" ? userText : `${restartNote}\n\n${userText}`,
-                attachments: message.attachments,
-                providerThread: budgetProviderThread,
-                nativeContextEstimate:
-                  budgetProviderThread.contextUsage?.usedTokens === undefined
-                    ? yield* nativeContextEstimate
-                    : 0,
-              });
-            }),
+            budget,
             alreadyDeliveredItemIds: deliveredItemIds,
             ...(session.injectHistory === undefined
               ? {}
