@@ -265,7 +265,7 @@ describe("MessagesTimeline messages", () => {
       expect(turns).toEqual(turns.toSorted((a, b) => a - b));
     };
 
-    await vi.waitFor(() => expect(screen.text()).toContain("A turn 118:"));
+    expect(screen.text()).toContain("A turn 118:");
     expect(turnsInDomOrder()).toContain(0);
     expectItemOrder();
 
@@ -276,7 +276,7 @@ describe("MessagesTimeline messages", () => {
         timelineEntries={thread("B")}
       />,
     );
-    await vi.waitFor(() => expect(screen.text()).toContain("B turn 118:"));
+    expect(screen.text()).toContain("B turn 118:");
     expect(screen.text()).not.toContain("A turn");
     expectItemOrder();
   });
