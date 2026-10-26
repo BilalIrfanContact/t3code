@@ -2214,6 +2214,340 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect.each([
+    "recover",
+    "completion-only",
+    "exhaust",
+    "stop",
+    "stop-continued",
+    "steer",
+    "start-fails",
+  ] as const)("handles terminal Codex capacity failures when retries %s", (outcome) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const scenario = `capacity-${outcome}`;
+        const nativeThreadId = `native-${scenario}`;
+        const nativeTurnId = (attempt: number) => `${nativeThreadId}-${attempt}`;
+        const prompt = "Continue the task.";
+        const capacityError = {
+          message: "Selected model is at capacity. Please try a different model.",
+          codexErrorInfo: "serverOverloaded",
+        };
+        const failureEntries = (attempt: number): Array<CodexReplay.CodexAppServerReplayEntry> => [
+          {
+            type: "emit_inbound",
+            frame: {
+              method: "error",
+              params: {
+                threadId: nativeThreadId,
+                turnId: nativeTurnId(attempt),
+                willRetry: false,
+                error: capacityError,
+              },
+            },
+          },
+          {
+            type: "emit_inbound",
+            frame: {
+              method: "turn/completed",
+              params: {
+                threadId: nativeThreadId,
+                turn: {
+                  ...makeCodexReplayTurn({ id: nativeTurnId(attempt), status: "failed" }),
+                  error: capacityError,
+                },
+              },
+            },
+          },
+        ];
+        const entries = codexReplayPreamble({
+          nativeThreadId,
+          nativeTurnId: nativeTurnId(0),
+          prompt,
+        });
+        entries.push(
+          ...(outcome === "completion-only" ? failureEntries(0).slice(1) : failureEntries(0)),
+        );
+        if (outcome === "completion-only") entries.push(...failureEntries(0).slice(1));
+        const retries = outcome === "exhaust" ? 5 : outcome === "stop" ? 0 : 1;
+        const steeredText = "Use the smaller change.";
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          const start = codexReplayPreamble({
+            nativeThreadId,
+            nativeTurnId: nativeTurnId(attempt),
+            prompt,
+          }).slice(-3);
+          for (const entry of start) {
+            if (entry.type === "expect_outbound") {
+              entries.push({
+                ...entry,
+                frame: {
+                  id: 3 + attempt,
+                  method: "turn/start",
+                  params: {
+                    threadId: nativeThreadId,
+                    input: [],
+                    cwd: "/workspace",
+                    model: "gpt-5.4",
+                    approvalPolicy: "never",
+                    approvalsReviewer: "user",
+                    sandboxPolicy: { type: "dangerFullAccess" },
+                    summary: "detailed",
+                    collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
+                  },
+                },
+              });
+            } else if (entry.type === "emit_inbound" && entry.label === "turn/start") {
+              entries.push(
+                outcome === "start-fails"
+                  ? {
+                      type: "emit_inbound",
+                      frame: {
+                        id: 3 + attempt,
+                        error: { code: -32603, message: "Start failed" },
+                      },
+                    }
+                  : withReplayRequestId(entry, 3 + attempt),
+              );
+            } else if (outcome !== "start-fails") {
+              entries.push(entry);
+            }
+          }
+          if (outcome === "exhaust") entries.push(...failureEntries(attempt));
+          if (outcome === "recover" || outcome === "completion-only") {
+            entries.push({
+              type: "emit_inbound",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: makeCodexReplayTurn({ id: nativeTurnId(attempt), status: "completed" }),
+                },
+              },
+            });
+          }
+          if (outcome === "stop-continued" || outcome === "steer") {
+            const steering = outcome === "steer";
+            entries.push(
+              {
+                type: "expect_outbound",
+                frame: {
+                  id: 5,
+                  method: steering ? "turn/steer" : "turn/interrupt",
+                  params: steering
+                    ? {
+                        threadId: nativeThreadId,
+                        expectedTurnId: nativeTurnId(attempt),
+                        input: [{ type: "text", text: steeredText }],
+                      }
+                    : { threadId: nativeThreadId, turnId: nativeTurnId(attempt) },
+                },
+              },
+              {
+                type: "emit_inbound",
+                frame: { id: 5, result: steering ? { turnId: nativeTurnId(attempt) } : {} },
+              },
+              {
+                type: "emit_inbound",
+                frame: {
+                  method: "turn/completed",
+                  params: {
+                    threadId: nativeThreadId,
+                    turn: makeCodexReplayTurn({
+                      id: nativeTurnId(attempt),
+                      status: steering ? "completed" : "interrupted",
+                    }),
+                  },
+                },
+              },
+            );
+          }
+        }
+        const milestones = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
+        const starts: Array<unknown> = [];
+        const harness = yield* makeCodexReplayHarness(
+          makeCodexReplayTranscript({ scenario, entries }),
+          (event) =>
+            event.type === "turn.terminal" ||
+            (event.type === "turn_item.updated" &&
+              event.turnItem.type === "error" &&
+              event.turnItem.status === "running")
+              ? Queue.offer(milestones, event)
+              : Effect.void,
+          (method, params) =>
+            Effect.sync(() => {
+              if (method === "turn/start") starts.push(params);
+            }),
+        );
+        const turnInput = makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make(scenario),
+          text: prompt,
+        });
+        yield* harness.runtime.startTurn(turnInput);
+        for (let attempt = 1; attempt <= Math.max(retries, 1); attempt++) {
+          const milestone = yield* Queue.take(milestones);
+          assert.equal(milestone.type, "turn_item.updated");
+          if (milestone.type !== "turn_item.updated" || milestone.turnItem.type !== "error") return;
+          const providerTurnId = milestone.turnItem.providerTurnId;
+          assert.isNotNull(providerTurnId);
+          if (providerTurnId === null) return;
+          assert.deepEqual(milestone.turnItem.retry, {
+            attempt,
+            maxAttempts: 5,
+            retryDelayMs: Math.min(2_000 * 2 ** (attempt - 1), 30_000),
+          });
+          assert.isEmpty(harness.terminalEvents());
+          if (outcome === "stop") {
+            yield* harness.runtime.interruptTurn({
+              providerThread: harness.providerThread,
+              providerTurnId,
+            });
+          }
+          const steering =
+            outcome === "steer"
+              ? yield* harness.runtime
+                  .steerTurn({
+                    ...turnInput,
+                    providerTurnId,
+                    message: { ...turnInput.message, text: steeredText },
+                  })
+                  .pipe(Effect.forkScoped)
+              : undefined;
+          yield* TestClock.adjust(Math.min(2_000 * 2 ** (attempt - 1), 30_000));
+          if (steering !== undefined) yield* Fiber.join(steering);
+          if (outcome === "stop-continued") {
+            yield* harness.until(() =>
+              harness.events.some(
+                (event) =>
+                  event.type === "provider_turn.updated" &&
+                  event.providerTurn.nativeTurnRef?.nativeId === nativeTurnId(1),
+              ),
+            );
+            yield* harness.runtime.interruptTurn({
+              providerThread: harness.providerThread,
+              providerTurnId,
+            });
+          }
+        }
+        yield* harness.awaitTerminal(1);
+        const terminal = harness.terminalEvents()[0];
+        assert.equal(
+          terminal?.status,
+          outcome === "recover" || outcome === "completion-only" || outcome === "steer"
+            ? "completed"
+            : outcome === "stop" || outcome === "stop-continued"
+              ? "interrupted"
+              : "failed",
+        );
+        assert.lengthOf(starts, 1 + retries);
+        assert.lengthOf(harness.terminalEvents(), 1);
+        const retryItems = harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "error"
+            ? [event.turnItem]
+            : [],
+        );
+        assert.isTrue(
+          ["completed", "failed", "interrupted"].includes(retryItems.at(-1)?.status ?? ""),
+        );
+        assert.lengthOf(new Set(retryItems.map((item) => item.id)), 1);
+
+        if (outcome === "recover") {
+          const fs = yield* FileSystem.FileSystem;
+          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-capacity-retry-" });
+          const localTranscript = yield* decodeReplayTranscriptJson(
+            (yield* encodeReplayTranscriptJson(
+              makeCodexReplayTranscript({ scenario, entries }),
+            )).replaceAll(yield* encodeStringJson("/workspace"), yield* encodeStringJson(cwd)),
+          );
+          const driver = yield* CodexReplay.makeReplayDriver(localTranscript);
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            const threadId = ThreadId.make("thread:capacity-retry");
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("create-capacity-retry"),
+              threadId,
+              projectId: ProjectId.make("project:capacity-retry"),
+              title: "Capacity retry",
+              modelSelection: CODEX_TEST_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: cwd,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            const retrying = yield* orchestrator.streamDomainEvents.pipe(
+              Stream.filter(
+                (event) =>
+                  event.type === "turn-item.updated" &&
+                  event.payload.type === "error" &&
+                  event.payload.retry != null &&
+                  event.payload.status === "running",
+              ),
+              Stream.runHead,
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make("start-capacity-retry"),
+              threadId,
+              messageId: MessageId.make("message:capacity-retry"),
+              text: prompt,
+              attachments: [],
+              createdBy: "user",
+              creationSource: "web",
+              dispatchMode: { type: "start_immediately" },
+            });
+            yield* worker.drain();
+            yield* Fiber.join(retrying);
+            assert.equal(
+              (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)?.status,
+              "running",
+            );
+            const completed = yield* orchestrator.streamDomainEvents.pipe(
+              Stream.filter(
+                (event) => event.type === "run.updated" && event.payload.status === "waiting",
+              ),
+              Stream.runHead,
+              Effect.forkChild({ startImmediately: true }),
+            );
+            yield* TestClock.adjust("2 seconds");
+            yield* Fiber.join(completed);
+            yield* worker.drain();
+            const projection = yield* orchestrator.getThreadProjection(threadId);
+            assert.equal(projection.runs.at(-1)?.status, "completed");
+            assert.deepEqual(
+              projection.providerTurns.map((turn) => turn.status),
+              ["failed", "completed"],
+            );
+            assert.lengthOf(
+              projection.messages.filter((message) => message.role === "user"),
+              1,
+            );
+            assert.isNull((yield* Ref.get(driver.state)).failure);
+          }).pipe(
+            Effect.provide(
+              ProviderReplayHarness.layerWithRegistry(
+                { name: "codex-capacity-retry", runtimePolicyOverride: { cwd } },
+                CodexAdapterV2Testkit.layer({ transcript: localTranscript, driver }),
+                { runEffectWorker: false },
+              ),
+            ),
+          );
+        }
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
   it.effect("resolves retryable app-server errors on resumed provider activity", () =>
     Effect.scoped(
       Effect.gen(function* () {
