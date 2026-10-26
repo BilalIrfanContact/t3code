@@ -698,13 +698,22 @@ export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
 }
 
 /** Unopened threads' failures still count as unseen, unlike completions. */
-function hasUnseenFailure(thread: ThreadStatusInput): boolean {
-  if (thread.latestRun?.status !== "failed") return false;
+function hasUnseenFailure(
+  thread: Pick<ThreadStatusInput, "latestRun" | "runtime" | "lastVisitedAt">,
+): boolean {
+  // Failed runs can lack completedAt, and a session can fail before any run.
+  const failedAt =
+    thread.latestRun?.status === "failed"
+      ? (thread.latestRun.completedAt ?? thread.runtime?.updatedAt)
+      : thread.runtime?.status === "failed"
+        ? thread.runtime.updatedAt
+        : undefined;
+  if (failedAt === undefined) return false;
   if (!thread.lastVisitedAt) return true;
-  const completedAt = Date.parse(thread.latestRun.completedAt ?? "");
-  const lastVisitedAt = Date.parse(thread.lastVisitedAt);
-  if (Number.isNaN(completedAt) || Number.isNaN(lastVisitedAt)) return true;
-  return completedAt > lastVisitedAt;
+  const failedAtMs = Date.parse(failedAt ?? "");
+  const lastVisitedAtMs = Date.parse(thread.lastVisitedAt);
+  if (Number.isNaN(failedAtMs) || Number.isNaN(lastVisitedAtMs)) return true;
+  return failedAtMs > lastVisitedAtMs;
 }
 
 export function shouldClearThreadSelectionOnMouseDown(target: HTMLElement | null): boolean {
@@ -892,6 +901,14 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
   }
   return "ready";
+}
+
+/** Sidebar row status: a failure the user has already opened settles to ready, like Done. */
+export function resolveSidebarRowStatus(
+  thread: SidebarThreadStatusInput & Pick<ThreadStatusInput, "latestRun" | "lastVisitedAt">,
+): SidebarThreadStatus {
+  const status = resolveSidebarThreadStatus(thread);
+  return status === "failed" && !hasUnseenFailure(thread) ? "ready" : status;
 }
 
 export type SidebarV2TopStatusKind =
