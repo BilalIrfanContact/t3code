@@ -173,6 +173,7 @@ function setup(withBrowser = false) {
       RefreshControl: empty,
     },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0 }) },
+    "../../native/NativeScrollViewMarker": { NativeScrollView: empty },
     "../../native/native-layout-metrics": { useNativeColumnLayoutMetrics: () => null },
     "@legendapp/list/react-native": { LegendList: empty },
     "../../components/ui/Button": { Button: empty },
