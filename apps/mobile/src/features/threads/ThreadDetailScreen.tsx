@@ -11,11 +11,7 @@ import * as Dialog from "../../components/ui/Dialog";
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import { parseThreadKey, threadKey } from "@t3tools/client-runtime/state/entities";
 import { createThreadVisitTracker } from "@t3tools/client-runtime/state/thread-visits";
-import {
-  useChildThreadInputs,
-  useThreadReportedModelSelection,
-  useThreadShell,
-} from "../../state/entities";
+import { useChildThreadInputs, useThreadReportedModelSelection } from "../../state/entities";
 import { UsageLimitRecoveryCard } from "./UsageLimitRecoveryCard";
 import { ChatGptUsageLimitNotice } from "./ChatGptUsageLimitNotice";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
@@ -972,9 +968,11 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
     showFloatingStatus ? FLOATING_WORKING_CONTROL_COVERAGE : 0,
   );
   useEffect(() => {
-    floatingControlCoverage.value = withTiming(
-      showFloatingStatus ? FLOATING_WORKING_CONTROL_COVERAGE : 0,
-      { duration: 180, reduceMotion: ReduceMotion.System },
+    floatingControlCoverage.set(
+      withTiming(showFloatingStatus ? FLOATING_WORKING_CONTROL_COVERAGE : 0, {
+        duration: 180,
+        reduceMotion: ReduceMotion.System,
+      }),
     );
   }, [floatingControlCoverage, showFloatingStatus]);
   // Android measures its expanded card in-flow; only iOS needs extra overlay coverage.
@@ -988,7 +986,7 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
       floatingControlCoverage.value +
       (userInputCoverageApplies ? userInputInsetProgress.value * userInputCardCoverage.value : 0),
     (value) => {
-      combinedContentInsetEndAdjustment.value = value;
+      combinedContentInsetEndAdjustment.set(value);
     },
     [userInputCoverageApplies],
   );
@@ -1681,7 +1679,7 @@ export const ThreadDetailScreen = function ThreadDetailScreen(props: ThreadDetai
                             ? props.activePendingApproval.supportsFeedback
                               ? "Send feedback to decline this request"
                               : "Send a message to decline and redirect the agent"
-                            : "Ask the repo agent, or run a command…"
+                            : "Ask anything"
                         }
                         contentMaxWidth={contentMaxWidth}
                         draftControls={props.draftMode?.controls}
