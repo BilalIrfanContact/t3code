@@ -96,14 +96,18 @@ export function useThreadPr(thread: EnvironmentThreadShell): ThreadPrPresentatio
           },
         }),
   );
-  if (linkedPresentation !== null) return linkedPresentation;
-  if (pullRequestRef === null) return null;
-  const summary = pullRequestSummary.data ?? snapshot;
-  return summary === undefined
-    ? null
-    : presentThreadPr(pullRequestDetailToVcsStatus(summary), {
-        kind: summary.provider,
-        name: summary.provider,
-        baseUrl: "",
-      });
+  const summary = pullRequestRef === null ? undefined : (pullRequestSummary.data ?? snapshot);
+  // Rows pass `pr` into callbacks; a fresh object per render would invalidate them.
+  const summaryPresentation = useMemo(
+    () =>
+      summary === undefined
+        ? null
+        : presentThreadPr(pullRequestDetailToVcsStatus(summary), {
+            kind: summary.provider,
+            name: summary.provider,
+            baseUrl: "",
+          }),
+    [summary],
+  );
+  return linkedPresentation ?? summaryPresentation;
 }

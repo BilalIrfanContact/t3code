@@ -51,24 +51,35 @@ async function readSvgXml(uri: string, signal: AbortSignal): Promise<string> {
   return response.text();
 }
 
-// Feed rows unmount as they scroll away; the idle TTL keeps a parsed document
-// for the row that scrolls back instead of fetching it again.
+type SvgDocument = { readonly ast: JsxAST; readonly size: ImageSize | null };
+
+// Feed rows unmount as they scroll away. Only parsed documents outlive their
+// readers (for the row that scrolls back); a failed load is dropped with its last
+// reader so the next mount fetches again.
+const parsedSvgDocumentAtom = Atom.family((_uri: string) =>
+  Atom.make<SvgDocument | null>(null).pipe(
+    Atom.setIdleTTL(60_000),
+    Atom.withLabel("mobile:thread-markdown-svg-parsed"),
+  ),
+);
+
 const svgDocumentAtom = Atom.family((uri: string) =>
-  Atom.make(
-    Effect.tryPromise({
-      try: async (signal) => {
+  Atom.make((get) => {
+    const parsed = parsedSvgDocumentAtom(uri);
+    const cached = get(parsed);
+    if (cached !== null) return Effect.succeed(cached);
+    return Effect.tryPromise({
+      try: async (signal): Promise<SvgDocument> => {
         const ast = parse(await readSvgXml(uri, signal));
         if (!ast) throw new Error("SVG has no root element");
         return { ast, size: resolveSvgImageSize(ast.props) };
       },
       catch: (cause) => new SvgLoadError({ cause }),
-    }),
-  ).pipe(Atom.setIdleTTL(60_000), Atom.withLabel("mobile:thread-markdown-svg")),
+    }).pipe(Effect.tap((document) => Effect.sync(() => get.set(parsed, document))));
+  }).pipe(Atom.withLabel("mobile:thread-markdown-svg")),
 );
 
-const noSvgDocumentAtom = Atom.make(
-  AsyncResult.initial<{ readonly ast: JsxAST; readonly size: ImageSize | null }, SvgLoadError>(),
-);
+const noSvgDocumentAtom = Atom.make(AsyncResult.initial<SvgDocument, SvgLoadError>());
 
 export function ThreadMarkdownImageView(props: {
   readonly uri: string | null;
