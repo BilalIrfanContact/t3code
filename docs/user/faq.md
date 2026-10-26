@@ -45,9 +45,9 @@ T3 Connect is our built-in alternative to Tailscale for remote connections. If i
 
 ## Will I get banned for using my subscription?
 
-OpenAI or Anthropic ban? Annoying but whatever. You are not doing anything weird here anyway: Claude Code and Codex in T3 Code run through their official harnesses with your own login. Anthropic's rules target harnesses that aren't Claude Code, and serving your tokens to other people.
+No. We work with all of the labs and T3 Code is within the TOS of Claude Code, Codex, and Google Antigravity. We worked directly with SpaceXAI to collaborate on the Grok Build and Cursor integrations. Everything else uses official ACP bindings.
 
-Google claims your accounts will be safe when used with the ACP bindings. I'm risking my YouTube channel with this, so it's probably fine. [Codex](./providers-codex.md) · [Antigravity](./providers-antigravity.md)
+If it works in T3 Code, you can trust it is safe.
 
 ## Can I add a bunch of accounts for one provider?
 
