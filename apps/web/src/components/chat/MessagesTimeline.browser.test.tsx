@@ -304,16 +304,29 @@ describe("MessagesTimeline messages", () => {
       );
     const viewport = props.listRef.current!.getScrollableNode()!;
 
-    for (let step = 0; step < 40; step++) {
-      await act(() => {
-        viewport.scrollTop -= 300;
-        viewport.dispatchEvent(new Event("scroll"));
-        vi.advanceTimersByTime(16);
-      });
-    }
-    expect(turnsInDomOrder().filter((turn) => turn > 0 && turn < 100).length).toBeGreaterThan(0);
+    const scroll = async (by: number) => {
+      for (let step = 0; step < 40; step++) {
+        await act(() => {
+          viewport.scrollTop += by;
+          viewport.dispatchEvent(new Event("scroll"));
+          vi.advanceTimersByTime(16);
+        });
+      }
+      // Wrapping right after a scroll must still reach the first and last message.
+      expect(turnsInDomOrder()[0]).toBe(0);
+      expect(turnsInDomOrder().at(-1)).toBe(119);
+    };
 
-    await act(() => vi.advanceTimersByTime(200));
+    await act(() => {
+      viewport.scrollTop = 0;
+      viewport.dispatchEvent(new Event("scroll"));
+      vi.advanceTimersByTime(300);
+    });
+    await scroll(300);
+    expect(turnsInDomOrder().filter((turn) => turn > 0 && turn < 100).length).toBeGreaterThan(0);
+    await scroll(-300);
+
+    await act(() => vi.advanceTimersByTime(300));
     const turns = turnsInDomOrder();
     expect(turns).toEqual(turns.toSorted((a, b) => a - b));
   });
