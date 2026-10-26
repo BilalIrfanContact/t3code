@@ -281,6 +281,43 @@ describe("MessagesTimeline messages", () => {
     expectItemOrder();
   });
 
+  it("puts rows back in item order soon after a continuous scroll stops", async () => {
+    setup();
+    const props = baseProps();
+    await using screen = await renderElement(
+      <MessagesTimeline
+        {...props}
+        timelineEntries={Array.from({ length: 120 }, (_, index) =>
+          message(
+            `Turn ${index}:\n\n${"x ".repeat(200)}`,
+            { role: index % 2 === 0 ? "user" : "assistant" },
+            `turn-${index}`,
+          ),
+        )}
+      />,
+    );
+    await vi.waitFor(() => expect(screen.text()).toContain("Turn 118:"));
+    using _timers = fakeTimers();
+    const turnsInDomOrder = () =>
+      [...screen.container.querySelectorAll("h3")].map((heading) =>
+        Number(/Turn (\d+):/.exec(heading.parentElement?.textContent ?? "")?.[1]),
+      );
+    const viewport = props.listRef.current!.getScrollableNode()!;
+
+    for (let step = 0; step < 40; step++) {
+      await act(() => {
+        viewport.scrollTop -= 300;
+        viewport.dispatchEvent(new Event("scroll"));
+        vi.advanceTimersByTime(16);
+      });
+    }
+    expect(turnsInDomOrder().filter((turn) => turn > 0 && turn < 100).length).toBeGreaterThan(0);
+
+    await act(() => vi.advanceTimersByTime(200));
+    const turns = turnsInDomOrder();
+    expect(turns).toEqual(turns.toSorted((a, b) => a - b));
+  });
+
   it("preserves XML-like tags and comparisons in user messages as text", async () => {
     const source = [
       'Without reading a file, do you have <global-agent-instructions scope="workspace">',

@@ -1619,10 +1619,21 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d7cbe1cb43449cc29822b2646deabbdd
      }
    }
 diff --git a/react.js b/react.js
-index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33fb6074b29 100644
+index 914d2dafaafa001c9ab6791a0a0581659295e333..8c320b0dfb3ea60ef145274b37b1297b7dee26dc 100644
 --- a/react.js
 +++ b/react.js
-@@ -3257,6 +3257,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
+@@ -1908,6 +1908,10 @@ function updateScroll(ctx, newScroll, forceUpdate, options) {
+   state.scrollTime = currentTime;
+   const scrollDelta = Math.abs(newScroll - prevScroll);
+   const isUserScrollEvent = !!(options == null ? void 0 : options.fromNativeScrollEvent) && scrollDelta > 0.1 && !adjustChanged && scrollingTo === void 0 && !state.pendingNativeMVCPAdjust;
++  if (isUserScrollEvent) {
++    state.userScrollPrevTime = state.userScrollTime;
++    state.userScrollTime = currentTime;
++  }
+   const allowedEdge = isUserScrollEvent ? beginReachedEdgeUserScroll(ctx, newScroll - prevScroll) : void 0;
+   const didResolvePendingNativeMVCPAdjust = resolvePendingNativeMVCPAdjust(ctx, newScroll);
+   const scrollLength = state.scrollLength;
+@@ -3257,6 +3261,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
    const itemKey = (_a3 = state.idCache[itemIndex]) != null ? _a3 : getId(state, itemIndex);
    const updateLayout = (_b = options == null ? void 0 : options.updateLayout) != null ? _b : true;
    let didChangePosition = false;
@@ -1630,7 +1641,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
    let didRefreshData = false;
    if (updateLayout) {
      const positionValue = positions[itemIndex];
-@@ -3286,6 +3287,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
+@@ -3286,6 +3291,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
    const prevIndex = peek$(ctx, `containerItemIndex${containerIndex}`);
    if (prevIndex !== itemIndex) {
      set$(ctx, `containerItemIndex${containerIndex}`, itemIndex);
@@ -1638,7 +1649,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
    }
    const prevData = peek$(ctx, `containerItemData${containerIndex}`);
    const updateData = () => {
-@@ -3324,7 +3326,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
+@@ -3324,7 +3330,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
        }
      }
    }
@@ -1647,7 +1658,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
  }
  
  // src/core/prepareColumnStartState.ts
-@@ -3542,7 +3544,11 @@ function updateItemPositions(ctx, dataChanged, {
+@@ -3542,7 +3548,11 @@ function updateItemPositions(ctx, dataChanged, {
      }
      if (shouldOptimize && breakAt === void 0 && !scrollingTo && !dataChanged && currentRowTop > maxVisibleArea) {
        const itemsPerRow = hasColumns ? numColumns : 1;
@@ -1660,7 +1671,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
      }
      const id = (_e = idCache[i]) != null ? _e : getId(state, i);
      let span = 1;
-@@ -4243,6 +4249,7 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4243,6 +4253,7 @@ function calculateItemsInView(ctx, params = {}) {
      }
      let totalSize = getContentSize(ctx);
      let changedContainerIds;
@@ -1668,7 +1679,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
      const topPad = peek$(ctx, "stylePaddingTop") + peek$(ctx, "alignItemsAtEndPadding") + peek$(ctx, "headerSize");
      const numColumns = peek$(ctx, "numColumns");
      const speed = (_b = params.scrollVelocity) != null ? _b : getScrollVelocity(state);
-@@ -4545,6 +4552,9 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4545,6 +4556,9 @@ function calculateItemsInView(ctx, params = {}) {
            const containerIndex = allocation.containerIndex;
            const id = (_o = idCache[i]) != null ? _o : getId(state, i);
            const oldKey = peek$(ctx, `containerItemKey${containerIndex}`);
@@ -1678,7 +1689,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
            if (oldKey && oldKey !== id) {
              containerItemKeys.delete(oldKey);
            }
-@@ -4629,10 +4639,12 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4629,10 +4643,12 @@ function calculateItemsInView(ctx, params = {}) {
        } else {
          const itemIndex = indexByKey.get(itemKey);
          if (itemIndex !== void 0) {
@@ -1693,7 +1704,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
          }
        }
      }
-@@ -4642,6 +4654,9 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4642,6 +4658,9 @@ function calculateItemsInView(ctx, params = {}) {
      if (didChangePositions) {
        set$(ctx, "lastPositionUpdate", Date.now());
      }
@@ -1703,7 +1714,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
      if (suppressInitialScrollSideEffects) {
        evaluateBootstrapInitialScroll(ctx);
        return;
-@@ -4702,7 +4717,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4702,7 +4721,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        contentBelowAnchor = Math.max(0, contentBelowAnchor - ctx.scrollAxisGap);
        contentBelowAnchor += (ctx.values.get("footerSize") || 0) + getStylePaddingEnd(state.props);
        isReady = !hasUnknownTailSize;
@@ -1713,7 +1724,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
      } else if (anchorIndex >= 0) {
        isReady = false;
      }
-@@ -4722,6 +4738,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4722,6 +4742,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        updateScroll(ctx, state.scroll, true, { markHasScrolled: false });
      }
      (_b = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onReady) == null ? void 0 : _b.call(anchoredEndSpace, { anchorIndex: nextAnchorIndex, anchorKey: nextAnchorKey, size: nextSize });
@@ -1726,7 +1737,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
    }
    return nextSize;
  }
-@@ -4956,7 +4978,8 @@ function measureContainersInLayoutEffect(ctx, targetContainerIds = null) {
+@@ -4956,7 +4982,8 @@ function measureContainersInLayoutEffect(ctx, targetContainerIds = null) {
      const itemKey = peek$(ctx, `containerItemKey${containerId}`);
      const element = viewRef == null ? void 0 : viewRef.current;
      if (itemKey !== void 0 && element) {
@@ -1736,7 +1747,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
        setContainerLayoutBaseline(element, rect);
        measurements.push({
          containerId,
-@@ -4978,12 +5001,26 @@ var ContainerLayoutCoordinator = typedMemo(function ContainerLayoutCoordinatorCo
+@@ -4978,12 +5005,26 @@ var ContainerLayoutCoordinator = typedMemo(function ContainerLayoutCoordinatorCo
  }) {
    const ctx = useStateContext();
    const [containerLayoutEpoch] = useArr$(["containerLayoutEpoch"]);
@@ -1768,7 +1779,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
      }
    }, [ctx, containerLayoutEpoch]);
    return children;
-@@ -5651,6 +5688,18 @@ var ContainerSlot = typedMemo(function ContainerSlot2(props) {
+@@ -5651,6 +5692,18 @@ var ContainerSlot = typedMemo(function ContainerSlot2(props) {
  });
  
  // src/utils/reordering.ts
@@ -1787,7 +1798,7 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
  function sortDOMElements(container, indexByElement) {
    const elements = Array.from(container.children);
    if (elements.length <= 1) return elements;
-@@ -5690,9 +5739,9 @@ function sortDOMElements(container, indexByElement) {
+@@ -5690,9 +5743,9 @@ function sortDOMElements(container, indexByElement) {
          }
        }
        if (nextStableElement) {
@@ -1799,8 +1810,15 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
        }
      }
    }
-@@ -5736,35 +5785,23 @@ function findLIS(arr) {
+@@ -5734,37 +5787,55 @@ function findLIS(arr) {
+ }
+ 
  // src/hooks/useDOMOrder.ts
++var DOM_ORDER_SETTLE_MS = 150;
++function isUserScrolling(state) {
++  const { userScrollPrevTime, userScrollTime } = state;
++  return userScrollTime !== void 0 && userScrollPrevTime !== void 0 && userScrollTime - userScrollPrevTime < DOM_ORDER_SETTLE_MS && Date.now() - userScrollTime < DOM_ORDER_SETTLE_MS;
++}
  function useDOMOrder(ref) {
    const ctx = useStateContext();
 -  const debounceRef = React3.useRef(void 0);
@@ -1821,7 +1839,22 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
 -            }
 -          }
 -          sortDOMElements(parent, indexByElement);
--        }
++  const [containerOrderUpdate] = useArr$(["containerOrderUpdate"]);
++  const settleRef = React3.useRef(void 0);
++  React3.useLayoutEffect(() => {
++    const sort = () => {
++      settleRef.current = void 0;
++      const parent = ref.current;
++      if (!parent) {
++        return;
++      }
++      const indexByElement = /* @__PURE__ */ new Map();
++      for (const [containerId, viewRef] of ctx.viewRefs) {
++        const element = viewRef.current;
++        const index = peek$(ctx, `containerItemIndex${containerId}`);
++        if (element && index !== void 0) {
++          indexByElement.set(element, index);
+         }
 -        debounceRef.current = void 0;
 -      }, 500);
 -    });
@@ -1829,29 +1862,37 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
 -      unsubscribe();
 -      if (debounceRef.current !== void 0) {
 -        clearTimeout(debounceRef.current);
-+  const [containerOrderUpdate] = useArr$(["containerOrderUpdate"]);
-+  // Before paint: NVDA's browse mode keeps the first DOM order it reads.
-+  React3.useLayoutEffect(() => {
-+    const parent = ref.current;
-+    if (!parent) {
+       }
++      sortDOMElements(parent, indexByElement);
+     };
+-  }, [ctx]);
++    if (settleRef.current !== void 0) {
++      clearTimeout(settleRef.current);
++    }
++    // Before paint: NVDA's browse mode keeps the first DOM order it reads. Each move
++    // lays its row out again, so during a continuous scroll, sort once it settles.
++    if (!isUserScrolling(ctx.state)) {
++      sort();
 +      return;
 +    }
-+    const indexByElement = /* @__PURE__ */ new Map();
-+    for (const [containerId, viewRef] of ctx.viewRefs) {
-+      const element = viewRef.current;
-+      const index = peek$(ctx, `containerItemIndex${containerId}`);
-+      if (element && index !== void 0) {
-+        indexByElement.set(element, index);
-       }
--    };
--  }, [ctx]);
-+    }
-+    sortDOMElements(parent, indexByElement);
++    const settle = () => {
++      if (isUserScrolling(ctx.state)) {
++        settleRef.current = setTimeout(settle, DOM_ORDER_SETTLE_MS);
++      } else {
++        sort();
++      }
++    };
++    settleRef.current = setTimeout(settle, DOM_ORDER_SETTLE_MS);
 +  }, [ctx, containerOrderUpdate]);
++  React3.useEffect(() => () => {
++    if (settleRef.current !== void 0) {
++      clearTimeout(settleRef.current);
++    }
++  }, []);
  }
  function useFreshDataTransitionVisibility(readyToRender, transitionEpoch) {
    const [completedTransitionEpoch, setCompletedTransitionEpoch] = React3.useState(transitionEpoch);
-@@ -6446,8 +6483,8 @@ function ScrollAdjust() {
+@@ -6446,8 +6517,8 @@ function ScrollAdjust() {
                window.getComputedStyle(contentNode)[axis.paddingEndProp]
              );
              const temporaryPaddingEnd = `${(currentPaddingEnd || 0) + pad}px`;
@@ -1862,10 +1903,21 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..4234522cf8e1092aa942143d73c5b33f
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
 diff --git a/react.mjs b/react.mjs
-index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35a6ec422b 100644
+index 95465f2ab89ce41a10553f58af83618f7310e83c..252a9d5b23e271c089d30c357a78dff754f1c899 100644
 --- a/react.mjs
 +++ b/react.mjs
-@@ -3236,6 +3236,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
+@@ -1887,6 +1887,10 @@ function updateScroll(ctx, newScroll, forceUpdate, options) {
+   state.scrollTime = currentTime;
+   const scrollDelta = Math.abs(newScroll - prevScroll);
+   const isUserScrollEvent = !!(options == null ? void 0 : options.fromNativeScrollEvent) && scrollDelta > 0.1 && !adjustChanged && scrollingTo === void 0 && !state.pendingNativeMVCPAdjust;
++  if (isUserScrollEvent) {
++    state.userScrollPrevTime = state.userScrollTime;
++    state.userScrollTime = currentTime;
++  }
+   const allowedEdge = isUserScrollEvent ? beginReachedEdgeUserScroll(ctx, newScroll - prevScroll) : void 0;
+   const didResolvePendingNativeMVCPAdjust = resolvePendingNativeMVCPAdjust(ctx, newScroll);
+   const scrollLength = state.scrollLength;
+@@ -3236,6 +3240,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
    const itemKey = (_a3 = state.idCache[itemIndex]) != null ? _a3 : getId(state, itemIndex);
    const updateLayout = (_b = options == null ? void 0 : options.updateLayout) != null ? _b : true;
    let didChangePosition = false;
@@ -1873,7 +1925,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
    let didRefreshData = false;
    if (updateLayout) {
      const positionValue = positions[itemIndex];
-@@ -3265,6 +3266,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
+@@ -3265,6 +3270,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
    const prevIndex = peek$(ctx, `containerItemIndex${containerIndex}`);
    if (prevIndex !== itemIndex) {
      set$(ctx, `containerItemIndex${containerIndex}`, itemIndex);
@@ -1881,7 +1933,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
    }
    const prevData = peek$(ctx, `containerItemData${containerIndex}`);
    const updateData = () => {
-@@ -3303,7 +3305,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
+@@ -3303,7 +3309,7 @@ function syncMountedContainer(ctx, containerIndex, itemIndex, options) {
        }
      }
    }
@@ -1890,7 +1942,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
  }
  
  // src/core/prepareColumnStartState.ts
-@@ -3521,7 +3523,11 @@ function updateItemPositions(ctx, dataChanged, {
+@@ -3521,7 +3527,11 @@ function updateItemPositions(ctx, dataChanged, {
      }
      if (shouldOptimize && breakAt === void 0 && !scrollingTo && !dataChanged && currentRowTop > maxVisibleArea) {
        const itemsPerRow = hasColumns ? numColumns : 1;
@@ -1903,7 +1955,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
      }
      const id = (_e = idCache[i]) != null ? _e : getId(state, i);
      let span = 1;
-@@ -4222,6 +4228,7 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4222,6 +4232,7 @@ function calculateItemsInView(ctx, params = {}) {
      }
      let totalSize = getContentSize(ctx);
      let changedContainerIds;
@@ -1911,7 +1963,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
      const topPad = peek$(ctx, "stylePaddingTop") + peek$(ctx, "alignItemsAtEndPadding") + peek$(ctx, "headerSize");
      const numColumns = peek$(ctx, "numColumns");
      const speed = (_b = params.scrollVelocity) != null ? _b : getScrollVelocity(state);
-@@ -4524,6 +4531,9 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4524,6 +4535,9 @@ function calculateItemsInView(ctx, params = {}) {
            const containerIndex = allocation.containerIndex;
            const id = (_o = idCache[i]) != null ? _o : getId(state, i);
            const oldKey = peek$(ctx, `containerItemKey${containerIndex}`);
@@ -1921,7 +1973,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
            if (oldKey && oldKey !== id) {
              containerItemKeys.delete(oldKey);
            }
-@@ -4608,10 +4618,12 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4608,10 +4622,12 @@ function calculateItemsInView(ctx, params = {}) {
        } else {
          const itemIndex = indexByKey.get(itemKey);
          if (itemIndex !== void 0) {
@@ -1936,7 +1988,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
          }
        }
      }
-@@ -4621,6 +4633,9 @@ function calculateItemsInView(ctx, params = {}) {
+@@ -4621,6 +4637,9 @@ function calculateItemsInView(ctx, params = {}) {
      if (didChangePositions) {
        set$(ctx, "lastPositionUpdate", Date.now());
      }
@@ -1946,7 +1998,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
      if (suppressInitialScrollSideEffects) {
        evaluateBootstrapInitialScroll(ctx);
        return;
-@@ -4681,7 +4696,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4681,7 +4700,8 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        contentBelowAnchor = Math.max(0, contentBelowAnchor - ctx.scrollAxisGap);
        contentBelowAnchor += (ctx.values.get("footerSize") || 0) + getStylePaddingEnd(state.props);
        isReady = !hasUnknownTailSize;
@@ -1956,7 +2008,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
      } else if (anchorIndex >= 0) {
        isReady = false;
      }
-@@ -4701,6 +4717,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
+@@ -4701,6 +4721,12 @@ function maybeUpdateAnchoredEndSpace(ctx) {
        updateScroll(ctx, state.scroll, true, { markHasScrolled: false });
      }
      (_b = anchoredEndSpace == null ? void 0 : anchoredEndSpace.onReady) == null ? void 0 : _b.call(anchoredEndSpace, { anchorIndex: nextAnchorIndex, anchorKey: nextAnchorKey, size: nextSize });
@@ -1969,7 +2021,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
    }
    return nextSize;
  }
-@@ -4935,7 +4957,8 @@ function measureContainersInLayoutEffect(ctx, targetContainerIds = null) {
+@@ -4935,7 +4961,8 @@ function measureContainersInLayoutEffect(ctx, targetContainerIds = null) {
      const itemKey = peek$(ctx, `containerItemKey${containerId}`);
      const element = viewRef == null ? void 0 : viewRef.current;
      if (itemKey !== void 0 && element) {
@@ -1979,7 +2031,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
        setContainerLayoutBaseline(element, rect);
        measurements.push({
          containerId,
-@@ -4957,12 +4980,26 @@ var ContainerLayoutCoordinator = typedMemo(function ContainerLayoutCoordinatorCo
+@@ -4957,12 +4984,26 @@ var ContainerLayoutCoordinator = typedMemo(function ContainerLayoutCoordinatorCo
  }) {
    const ctx = useStateContext();
    const [containerLayoutEpoch] = useArr$(["containerLayoutEpoch"]);
@@ -2011,7 +2063,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
      }
    }, [ctx, containerLayoutEpoch]);
    return children;
-@@ -5630,6 +5667,18 @@ var ContainerSlot = typedMemo(function ContainerSlot2(props) {
+@@ -5630,6 +5671,18 @@ var ContainerSlot = typedMemo(function ContainerSlot2(props) {
  });
  
  // src/utils/reordering.ts
@@ -2030,7 +2082,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
  function sortDOMElements(container, indexByElement) {
    const elements = Array.from(container.children);
    if (elements.length <= 1) return elements;
-@@ -5669,9 +5718,9 @@ function sortDOMElements(container, indexByElement) {
+@@ -5669,9 +5722,9 @@ function sortDOMElements(container, indexByElement) {
          }
        }
        if (nextStableElement) {
@@ -2042,8 +2094,15 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
        }
      }
    }
-@@ -5715,35 +5764,23 @@ function findLIS(arr) {
+@@ -5713,37 +5766,55 @@ function findLIS(arr) {
+ }
+ 
  // src/hooks/useDOMOrder.ts
++var DOM_ORDER_SETTLE_MS = 150;
++function isUserScrolling(state) {
++  const { userScrollPrevTime, userScrollTime } = state;
++  return userScrollTime !== void 0 && userScrollPrevTime !== void 0 && userScrollTime - userScrollPrevTime < DOM_ORDER_SETTLE_MS && Date.now() - userScrollTime < DOM_ORDER_SETTLE_MS;
++}
  function useDOMOrder(ref) {
    const ctx = useStateContext();
 -  const debounceRef = useRef(void 0);
@@ -2064,7 +2123,22 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
 -            }
 -          }
 -          sortDOMElements(parent, indexByElement);
--        }
++  const [containerOrderUpdate] = useArr$(["containerOrderUpdate"]);
++  const settleRef = useRef(void 0);
++  useLayoutEffect(() => {
++    const sort = () => {
++      settleRef.current = void 0;
++      const parent = ref.current;
++      if (!parent) {
++        return;
++      }
++      const indexByElement = /* @__PURE__ */ new Map();
++      for (const [containerId, viewRef] of ctx.viewRefs) {
++        const element = viewRef.current;
++        const index = peek$(ctx, `containerItemIndex${containerId}`);
++        if (element && index !== void 0) {
++          indexByElement.set(element, index);
+         }
 -        debounceRef.current = void 0;
 -      }, 500);
 -    });
@@ -2072,29 +2146,37 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d08c285f1d0321c8ab0dfe9da0877f35
 -      unsubscribe();
 -      if (debounceRef.current !== void 0) {
 -        clearTimeout(debounceRef.current);
-+  const [containerOrderUpdate] = useArr$(["containerOrderUpdate"]);
-+  // Before paint: NVDA's browse mode keeps the first DOM order it reads.
-+  useLayoutEffect(() => {
-+    const parent = ref.current;
-+    if (!parent) {
+       }
++      sortDOMElements(parent, indexByElement);
+     };
+-  }, [ctx]);
++    if (settleRef.current !== void 0) {
++      clearTimeout(settleRef.current);
++    }
++    // Before paint: NVDA's browse mode keeps the first DOM order it reads. Each move
++    // lays its row out again, so during a continuous scroll, sort once it settles.
++    if (!isUserScrolling(ctx.state)) {
++      sort();
 +      return;
 +    }
-+    const indexByElement = /* @__PURE__ */ new Map();
-+    for (const [containerId, viewRef] of ctx.viewRefs) {
-+      const element = viewRef.current;
-+      const index = peek$(ctx, `containerItemIndex${containerId}`);
-+      if (element && index !== void 0) {
-+        indexByElement.set(element, index);
-       }
--    };
--  }, [ctx]);
-+    }
-+    sortDOMElements(parent, indexByElement);
++    const settle = () => {
++      if (isUserScrolling(ctx.state)) {
++        settleRef.current = setTimeout(settle, DOM_ORDER_SETTLE_MS);
++      } else {
++        sort();
++      }
++    };
++    settleRef.current = setTimeout(settle, DOM_ORDER_SETTLE_MS);
 +  }, [ctx, containerOrderUpdate]);
++  useEffect(() => () => {
++    if (settleRef.current !== void 0) {
++      clearTimeout(settleRef.current);
++    }
++  }, []);
  }
  function useFreshDataTransitionVisibility(readyToRender, transitionEpoch) {
    const [completedTransitionEpoch, setCompletedTransitionEpoch] = useState(transitionEpoch);
-@@ -6425,8 +6462,8 @@ function ScrollAdjust() {
+@@ -6425,8 +6496,8 @@ function ScrollAdjust() {
                window.getComputedStyle(contentNode)[axis.paddingEndProp]
              );
              const temporaryPaddingEnd = `${(currentPaddingEnd || 0) + pad}px`;
