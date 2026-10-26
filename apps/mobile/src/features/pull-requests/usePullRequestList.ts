@@ -149,15 +149,18 @@ export function usePullRequestList(targets: readonly ListTarget[]) {
   // Starting one kind of load clears the other, so at most one holds an error.
   const loadError = settledError(refresh) ?? settledError(page);
 
+  // Read from the registry, not the render: a second onEndReached before React re-renders must
+  // see the load the first one started.
   const loadMore = (retry = false) => {
-    if (page.waiting || refresh.waiting || (!retry && loadError)) return;
+    if (registry.get(pageAtom).waiting || registry.get(refreshAtom).waiting) return;
+    if (!retry && loadError) return;
     if (!continuations(registry, targets).length) return;
     registry.set(refreshAtom, Atom.Reset);
     registry.set(pageAtom, retry);
   };
 
   const onRefresh = () => {
-    if (!targets.length || refresh.waiting) return;
+    if (!targets.length || registry.get(refreshAtom).waiting) return;
     registry.set(pageAtom, Atom.Reset);
     registry.set(refreshAtom, undefined);
   };
@@ -241,21 +244,23 @@ export function usePullRequestList(targets: readonly ListTarget[]) {
   const counts = useAtomValue(statsAtom);
   // Server answers land in pullRequestListStatsFamily; these cover a cached answer, which is
   // all an offline environment has.
-  const shownStats = new Map(
-    counts.flatMap(({ environmentId, result }) =>
-      AsyncResult.isSuccess(result)
-        ? result.value.stats.map((row) => [`${environmentId}:${statKey(row)}`, row] as const)
-        : [],
-    ),
-  );
-  const entries = shownStats.size
-    ? data.entries.map((entry) => {
-        const stat = shownStats.get(`${entry.environmentId}:${statKey(entry)}`);
-        return stat && entry.additions + entry.deletions === 0
-          ? { ...entry, additions: stat.additions, deletions: stat.deletions }
-          : entry;
-      })
-    : data.entries;
+  const entries = useMemo(() => {
+    const shownStats = new Map(
+      counts.flatMap(({ environmentId, result }) =>
+        AsyncResult.isSuccess(result)
+          ? result.value.stats.map((row) => [`${environmentId}:${statKey(row)}`, row] as const)
+          : [],
+      ),
+    );
+    return shownStats.size
+      ? data.entries.map((entry) => {
+          const stat = shownStats.get(`${entry.environmentId}:${statKey(entry)}`);
+          return stat && entry.additions + entry.deletions === 0
+            ? { ...entry, additions: stat.additions, deletions: stat.deletions }
+            : entry;
+        })
+      : data.entries;
+  }, [data.entries, counts]);
 
   const updateEntry = useCallback(
     (entry: EnvironmentPullRequestListEntry, patch: Partial<EnvironmentPullRequestListEntry>) => {
@@ -292,7 +297,10 @@ export function usePullRequestList(targets: readonly ListTarget[]) {
       }),
     [sources],
   );
-  const listing = { ...data, entries, errors: [...data.errors, ...errors] };
+  const listing = useMemo(
+    () => ({ ...data, entries, errors: [...data.errors, ...errors] }),
+    [data, entries, errors],
+  );
   return {
     data: listing,
     entries,
