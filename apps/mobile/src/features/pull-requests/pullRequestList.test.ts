@@ -13,6 +13,7 @@ import {
   mergeEnvironmentPullRequestPages,
   nextPullRequestListInput,
   PR_LIST_PAGE_SIZE,
+  patchPullRequestListEntry,
   pullRequestFilterChoices,
   pullRequestLabelColors,
   pullRequestListHead,
@@ -115,6 +116,19 @@ describe("mobile PR list pagination", () => {
     expect(
       mergePullRequestListEntries([entry(1)], [entry(2, { host: "enterprise.test" }), entry(2)]),
     ).toHaveLength(3);
+  });
+  it("keeps a patch made on head-only pages while that head is current", () => {
+    const head = page([entry(2), entry(1)], { repo: "first" });
+    const patched = patchPullRequestListEntry(
+      pullRequestListHead(null, head),
+      entry(1),
+      { state: "merged" },
+      5,
+    );
+    expect(pullRequestListHead(patched, head).entries.map((row) => row.state)).toEqual([
+      "open",
+      "merged",
+    ]);
   });
   it("refreshes the head without dropping older loaded pages or rewinding their cursor", () => {
     const first = pullRequestListHead(null, page([entry(3)], { repo: "first" }));

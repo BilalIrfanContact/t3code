@@ -176,6 +176,22 @@ export function pullRequestListHead(
       };
 }
 
+export function patchPullRequestListEntry(
+  pages: PullRequestListPages,
+  entry: PullRequestListEntry,
+  patch: Partial<PullRequestListEntry>,
+  observedAt: number,
+): PullRequestListPages {
+  return {
+    ...pages,
+    entries: pages.entries.map((row) =>
+      pullRequestListKey(row) === pullRequestListKey(entry)
+        ? { ...row, ...patch, observedAt }
+        : row,
+    ),
+  };
+}
+
 export function pullRequestListInput(
   controls: PullRequestListControls,
   query: string,

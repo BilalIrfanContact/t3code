@@ -16,8 +16,8 @@ import {
   appendPullRequestListPage,
   mergeEnvironmentPullRequestPages,
   nextPullRequestListInput,
+  patchPullRequestListEntry,
   pullRequestListHead,
-  pullRequestListKey,
   pullRequestStatKey as statKey,
   scopedPullRequestListKey,
   withShownPullRequestStats,
@@ -259,18 +259,13 @@ export function usePullRequestList(targets: readonly ListTarget[]) {
     (entry: EnvironmentPullRequestListEntry, patch: Partial<EnvironmentPullRequestListEntry>) => {
       const target = targets.find((target) => target.environmentId === entry.environmentId);
       if (!target) return;
-      registry.update(pullRequestListPagesFamily(pullRequestListPagesKey(target)), (previous) =>
-        previous
-          ? {
-              ...previous,
-              entries: previous.entries.map((row) =>
-                pullRequestListKey(row) === pullRequestListKey(entry)
-                  ? { ...row, ...patch, observedAt: Date.now() }
-                  : row,
-              ),
-            }
-          : previous,
-      );
+      // Patch what the list shows: before any answer is recorded, the head alone supplies the rows.
+      const pages = currentPages((atom) => registry.get(atom), target);
+      if (pages)
+        registry.set(
+          pullRequestListPagesFamily(pullRequestListPagesKey(target)),
+          patchPullRequestListEntry(pages, entry, patch, Date.now()),
+        );
       registry.refresh(composerPullRequests.list(target));
     },
     [registry, targets],
