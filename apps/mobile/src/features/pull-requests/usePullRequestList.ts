@@ -18,6 +18,7 @@ import {
   nextPullRequestListInput,
   patchPullRequestListEntry,
   pullRequestListHead,
+  shownPullRequestListPages,
   pullRequestStatKey as statKey,
   scopedPullRequestListKey,
   withShownPullRequestStats,
@@ -28,11 +29,16 @@ import {
 type ListTarget = { readonly environmentId: EnvironmentId; readonly input: PullRequestListInput };
 type Read = <A>(atom: Atom.Atom<A>) => A;
 
-/** The loaded pages, with the head the list query holds now (cached or answered) on top. */
+/** The head the list query holds now, cached or answered. */
+function currentHead(read: Read, target: ListTarget) {
+  return Option.getOrNull(AsyncResult.value(read(composerPullRequests.list(target))));
+}
+
 function currentPages(read: Read, target: ListTarget): PullRequestListPages | null {
-  const head = Option.getOrNull(AsyncResult.value(read(composerPullRequests.list(target))));
-  const cached = read(pullRequestListPagesFamily(pullRequestListPagesKey(target)));
-  return head ? pullRequestListHead(cached, head) : cached;
+  return shownPullRequestListPages(
+    read(pullRequestListPagesFamily(pullRequestListPagesKey(target))),
+    currentHead(read, target),
+  );
 }
 
 const sourcesFamily = Atom.family((key: string) => {
@@ -259,13 +265,16 @@ export function usePullRequestList(targets: readonly ListTarget[]) {
     (entry: EnvironmentPullRequestListEntry, patch: Partial<EnvironmentPullRequestListEntry>) => {
       const target = targets.find((target) => target.environmentId === entry.environmentId);
       if (!target) return;
-      // Patch what the list shows: before any answer is recorded, the head alone supplies the rows.
-      const pages = currentPages((atom) => registry.get(atom), target);
-      if (pages)
-        registry.set(
-          pullRequestListPagesFamily(pullRequestListPagesKey(target)),
-          patchPullRequestListEntry(pages, entry, patch, Date.now()),
-        );
+      const pagesAtom = pullRequestListPagesFamily(pullRequestListPagesKey(target));
+      const read = <A>(atom: Atom.Atom<A>) => registry.get(atom);
+      const patched = patchPullRequestListEntry(
+        read(pagesAtom),
+        currentHead(read, target),
+        entry,
+        patch,
+        Date.now(),
+      );
+      if (patched) registry.set(pagesAtom, patched);
       registry.refresh(composerPullRequests.list(target));
     },
     [registry, targets],

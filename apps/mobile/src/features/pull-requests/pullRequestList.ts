@@ -176,20 +176,32 @@ export function pullRequestListHead(
       };
 }
 
+/** The recorded pages with the current list head on top; before any answer is recorded, the head alone. */
+export function shownPullRequestListPages(
+  recorded: PullRequestListPages | null,
+  head: PullRequestListResult | null,
+): PullRequestListPages | null {
+  return head ? pullRequestListHead(recorded, head) : recorded;
+}
+
 export function patchPullRequestListEntry(
-  pages: PullRequestListPages,
+  recorded: PullRequestListPages | null,
+  head: PullRequestListResult | null,
   entry: PullRequestListEntry,
   patch: Partial<PullRequestListEntry>,
   observedAt: number,
-): PullRequestListPages {
-  return {
-    ...pages,
-    entries: pages.entries.map((row) =>
-      pullRequestListKey(row) === pullRequestListKey(entry)
-        ? { ...row, ...patch, observedAt }
-        : row,
-    ),
-  };
+): PullRequestListPages | null {
+  const pages = shownPullRequestListPages(recorded, head);
+  return (
+    pages && {
+      ...pages,
+      entries: pages.entries.map((row) =>
+        pullRequestListKey(row) === pullRequestListKey(entry)
+          ? { ...row, ...patch, observedAt }
+          : row,
+      ),
+    }
+  );
 }
 
 export function pullRequestListInput(

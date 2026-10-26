@@ -19,6 +19,7 @@ import {
   pullRequestListHead,
   pullRequestListInput,
   scopedPullRequestListKey,
+  shownPullRequestListPages,
   pullRequestListRowsAreEqual,
   withShownPullRequestStats,
   withoutScratchProjectScope,
@@ -117,15 +118,10 @@ describe("mobile PR list pagination", () => {
       mergePullRequestListEntries([entry(1)], [entry(2, { host: "enterprise.test" }), entry(2)]),
     ).toHaveLength(3);
   });
-  it("keeps a patch made on head-only pages while that head is current", () => {
+  it("patches a row that only the list head supplies, and keeps it while that head is current", () => {
     const head = page([entry(2), entry(1)], { repo: "first" });
-    const patched = patchPullRequestListEntry(
-      pullRequestListHead(null, head),
-      entry(1),
-      { state: "merged" },
-      5,
-    );
-    expect(pullRequestListHead(patched, head).entries.map((row) => row.state)).toEqual([
+    const patched = patchPullRequestListEntry(null, head, entry(1), { state: "merged" }, 5);
+    expect(shownPullRequestListPages(patched, head)?.entries.map((row) => row.state)).toEqual([
       "open",
       "merged",
     ]);
