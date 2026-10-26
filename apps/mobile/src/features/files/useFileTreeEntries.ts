@@ -308,7 +308,18 @@ export function useFileTreeEntries(input: {
         }
       }
     };
-    if (!missingRoot) visit([...directories.discoveries.values()]);
+    if (!missingRoot) {
+      const discoveries = new Map(directories.discoveries);
+      // Search can return only leaves; their inferred parents still own loaded children.
+      for (const entry of directories.discoveries.values()) {
+        const parts = entry.path.split("/");
+        for (let index = 1; index < parts.length; index++) {
+          const path = parts.slice(0, index).join("/");
+          if (!discoveries.has(path)) discoveries.set(path, { kind: "directory", path });
+        }
+      }
+      visit([...discoveries.values()]);
+    }
     visit((rootData?.entries ?? []).filter((entry) => !entry.path.includes("/")));
     return {
       entries: [...merged.values()],

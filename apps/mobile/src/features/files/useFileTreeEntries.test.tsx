@@ -505,10 +505,7 @@ describe("file tree workspace state", () => {
       screen.load();
       await screen.succeed(0, []);
       screen.searchQuery.data = {
-        entries: [
-          { kind: "directory", path },
-          { kind: "file", path: `${path}/file.ts` },
-        ],
+        entries: [{ kind: "file", path: `${path}/file.ts` }],
         truncated: false,
       };
       screen.render({ searchQuery: "new" });
@@ -545,10 +542,7 @@ describe("file tree workspace state", () => {
       }
 
       screen.searchQuery.data = {
-        entries: [
-          { kind: "directory", path },
-          { kind: "file", path: `${path}/file.ts` },
-        ],
+        entries: [{ kind: "file", path: `${path}/file.ts` }],
         truncated: false,
       };
       screen.render({ searchQuery: "new" });
