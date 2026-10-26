@@ -21,7 +21,7 @@ Every harness feels nearly identical in here, so you can stop worrying about har
 
 ## Can I use T3 Code with my Claude Code subscription?
 
-Yes. That is the whole point. Step 1: install Claude Code CLI. Step 2: sign into Claude Code CLI. Step 3: Claude Code now works in T3 Code :) T3 Code talks to Claude through Anthropic's Agent SDK with your own login. We do not resell tokens. Using your sub for your own work is fine, including work your employer pays for. Serving those tokens to other people is not. [Claude setup](./providers-claude.md)
+Yes.
 
 ## How much does T3 Code cost?
 
