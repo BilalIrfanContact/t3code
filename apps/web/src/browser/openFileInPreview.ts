@@ -28,6 +28,7 @@ import { selectSelectedRightPanelSurface, useRightPanelStore } from "~/rightPane
 
 import {
   browserDefaultOpenProfileId,
+  browserDefaultOpenRendering,
   browserDefaultOpenViewport,
   resolveBrowserDefaults,
 } from "./browserDefaults";
@@ -81,6 +82,7 @@ export async function openUrlInPreview<E>(input: {
       url: input.url,
       viewport: browserDefaultOpenViewport(defaults),
       profileId: input.profileId ?? browserDefaultOpenProfileId(defaults),
+      ...browserDefaultOpenRendering(defaults),
       ...(runtime === undefined ? {} : { runtime }),
     },
   });

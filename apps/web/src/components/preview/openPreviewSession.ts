@@ -12,6 +12,7 @@ import { AsyncResult } from "effect/reactivity";
 
 import {
   browserDefaultOpenProfileId,
+  browserDefaultOpenRendering,
   browserDefaultOpenViewport,
   resolveBrowserDefaults,
 } from "~/browser/browserDefaults";
@@ -49,6 +50,7 @@ export async function openPreviewSession<E>(
       ...(input.url === undefined ? {} : { url: input.url }),
       viewport: input.viewport ?? browserDefaultOpenViewport(defaults),
       profileId: input.profileId ?? browserDefaultOpenProfileId(defaults),
+      ...browserDefaultOpenRendering(defaults),
       ...(runtime === undefined || runtime === "desktop" ? {} : { runtime }),
     },
   });

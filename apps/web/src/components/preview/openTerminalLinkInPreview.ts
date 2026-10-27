@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 
 import {
   browserDefaultOpenProfileId,
+  browserDefaultOpenRendering,
   browserDefaultOpenViewport,
   resolveBrowserDefaults,
 } from "~/browser/browserDefaults";
@@ -68,6 +69,7 @@ export async function openTerminalLinkInPreview<E>(
       url: input.url,
       viewport: browserDefaultOpenViewport(defaults),
       profileId: browserDefaultOpenProfileId(defaults),
+      ...browserDefaultOpenRendering(defaults),
       ...(runtime === undefined ? {} : { runtime }),
     },
   });
