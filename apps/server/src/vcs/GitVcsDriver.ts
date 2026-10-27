@@ -415,6 +415,9 @@ const WORKSPACE_FILES_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 const CHECKPOINT_RECOVERY_MAX_CANDIDATES = 64;
 const CHECKPOINT_RECOVERY_TIMEOUT = "5 seconds";
 const GIT_CHECK_IGNORE_MAX_STDIN_BYTES = 256 * 1024;
+// HEAD reflog subjects of operations that create commits. Fast-forwards are imports, so excluded.
+const LOCAL_COMMIT_REFLOG_SUBJECT =
+  /^(?:(?:commit(?: \([^)]*\))?|cherry-pick|revert|(?:rebase|pull .*) \((?:pick|reword|edit|squash|fixup)\)): |(?:merge|pull) .*: Merge made by )/;
 const WORKSPACE_GIT_HARDENED_CONFIG_ARGS = [
   "-c",
   "core.fsmonitor=false",
@@ -1392,7 +1395,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
                 (entry) =>
                   entry.ref === "HEAD" &&
                   entry.updatedAt >= since &&
-                  /^commit(?: \([^)]*\))?: /.test(entry.subject),
+                  LOCAL_COMMIT_REFLOG_SUBJECT.test(entry.subject),
               )
               .map((entry) => entry.commit),
           );
@@ -1402,15 +1405,20 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
             previousByRef.set(entry.ref, entry.commit);
             if (entry.ref === "HEAD") return [];
             if (entry.updatedAt < since || entry.subject === "update by push") return [];
-            return [entry.commit, ...(previous === undefined ? [] : [`^${previous}`])];
+            return [[entry.commit, ...(previous === undefined ? [] : [`^${previous}`])]];
           });
-          if (fetchRanges.length === 0) return new Set<string>();
-          return new Set(
-            (yield* lines(
-              ["rev-list", "--stdin"],
-              `${[...fetchRanges, `^${startHead}`].join("\n")}\n`,
-            )).filter((commit) => !localCommits.has(commit)),
+          // Each range runs alone: in one walk, a later fetch's `^previous` would hide the commits
+          // an earlier fetch in the same turn delivered.
+          const fetched = yield* Effect.forEach(
+            fetchRanges,
+            (range) =>
+              lines(
+                ["rev-list", `--since=@${capturedAt}`, "--stdin"],
+                `${[...range, `^${startHead}`].join("\n")}\n`,
+              ),
+            { concurrency: 4 },
           );
+          return new Set(fetched.flat().filter((commit) => !localCommits.has(commit)));
         },
       );
 
