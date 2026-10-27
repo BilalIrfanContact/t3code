@@ -77,6 +77,10 @@ export const ModelListRow = memo(function ModelListRow(props: {
           {props.inlineProviderIcon ? providerIcon : null}
           <div className="min-w-0 truncate text-sm font-normal leading-snug">
             {getDisplayModelName(model)}
+            {/* The inline icon is decorative, so name the provider for screen readers. */}
+            {props.inlineProviderIcon ? (
+              <span className="sr-only">, {props.providerDisplayName}</span>
+            ) : null}
           </div>
           {props.showNewBadge ? (
             <span
