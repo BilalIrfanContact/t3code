@@ -255,6 +255,10 @@ it("rebuilds the template from this checkout and sends a child T3's task prompt"
   const deferred = system[2]?.split("Load them first:\n")[1]?.split("\n\n")[0]?.split("\n") ?? [];
   assert.includeMembers(deferred, ["Monitor", "mcp__t3-code__delegate_task"]);
   assert.notInclude(deferred, "mcp__t3-code__retired_tool");
+  assert.includeMembers(deferred, [
+    "mcp__t3-code__watch_pull_request",
+    "mcp__t3-code__unwatch_pull_request",
+  ]);
   const reminders = buildMessages(makeSample(childCase, base))[0]?.content.map((b) => b.text);
   assert.equal(reminders?.[0], "<system-reminder>\n# currentDate\n</system-reminder>");
   assert.include(reminders?.[1], "Current branch: fix/date-format");
