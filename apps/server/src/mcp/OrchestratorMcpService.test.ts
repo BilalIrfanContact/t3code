@@ -1303,6 +1303,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           instanceId: codexInstanceId,
           driver: ProviderDriverKind.make("codex"),
         }),
+        displayName: "Codex",
         models: [
           model("gpt-6", {
             name: "Sol",
@@ -1330,7 +1331,7 @@ describe("OrchestratorMcpService provider resolution", () => {
               ],
             },
           }),
-          model("gpt-5", { isLegacy: true }),
+          model("gpt-5", { name: "Code Legacy", isLegacy: true }),
           model("gpt-4", { isLegacy: true }),
           model("gpt-3", { name: "GPT-3", isLegacy: true }),
           model("my-alpha", { isCustom: true }),
@@ -1430,6 +1431,28 @@ describe("OrchestratorMcpService provider resolution", () => {
           id: opencodeInstanceId,
           models: ["oc/m12", "oc/m01", "oc/m03", "oc/m04", "oc/m05", "oc/m06", "oc/m07", "oc/m08"],
           omitted: 3,
+        });
+        // A word naming the provider matches all its models, so legacy ones stay out.
+        assert.deepEqual(listing(yield* capabilitiesWith("Codex")), [
+          { id: codexInstanceId, models: ["gpt-6", "gpt-4", "gpt-3", "my-alpha"], omitted: 1 },
+          { id: opencodeInstanceId, models: [], omitted: 0 },
+        ]);
+        assert.deepEqual(listing(yield* capabilitiesWith(" ")), listing(yield* capabilitiesWith()));
+        for (const search of ["code", "codex code", "  CODE  "]) {
+          assert.deepEqual(listing(yield* capabilitiesWith(search))[0], {
+            id: codexInstanceId,
+            models: ["gpt-5"],
+            omitted: 0,
+          });
+        }
+        assert.deepEqual(
+          listing(yield* capabilitiesWith("open"))[1],
+          listing(yield* capabilitiesWith())[1],
+        );
+        assert.deepEqual(listing(yield* capabilitiesWith("codex gpt 5"))[0], {
+          id: codexInstanceId,
+          models: ["gpt-5"],
+          omitted: 0,
         });
       }),
     );
@@ -2694,65 +2717,37 @@ describe("OrchestratorMcpService thread lookup", () => {
   );
 });
 
-describe("OrchestratorMcpService thread pull requests", () => {
-  it.effect("counts linked pull requests instead of repeating them on every read and list", () =>
-    Effect.gen(function* () {
-      const threadId = ThreadId.make("thread:mcp-many-pull-requests");
-      const link = (number: number, source: "agent" | "stack-dismissed" = "agent") => ({
-        host: "github.com",
-        repository: "pingdotgg/t3code",
-        number,
-        url: `https://github.com/pingdotgg/t3code/pull/${number}`,
-        source,
-        linkedAt: "2026-10-21T09:00:00.000Z",
-        snapshot: null,
-        stack: null,
-      });
-      const linkedPullRequest = {
-        projectId: ProjectId.make("project:mcp-test"),
-        repository: "pingdotgg/t3code",
-        number: 1,
-        url: "https://github.com/pingdotgg/t3code/pull/1",
-      };
-      const shell: OrchestrationV2ThreadShell = {
-        ...liveThreadShell(threadId),
-        linkedPullRequest,
-        pullRequests: [
-          ...Array.from({ length: 164 }, (_, index) => link(index + 1)),
-          link(999, "stack-dismissed"),
-        ],
-      };
-      const projection = idleThreadProjection(shell);
-      const row = (position: number) => ({
-        position,
-        visibility: "visible",
-        sourceThreadId: threadId,
-        sourceItemId: `item-${position}`,
-        item: {
-          type: "user_message",
-          messageId: MessageId.make(`message-${position}`),
-          runId: null,
-          status: "completed",
-          title: null,
-          text: `message ${position}`,
-          updatedAt: DateTime.makeUnsafe("2026-10-21T09:00:00Z"),
-        },
-      });
-      const dependencies = Layer.mergeAll(
+describe("OrchestratorMcpService thread list", () => {
+  const client: McpInvocationScope = {
+    environmentId: EnvironmentId.make("environment:thread-list"),
+    requestNamespace: "client:thread-list",
+    thread: undefined,
+    client: { sessionId: "thread-list", label: "Claude Code", access: "full-access" },
+    capabilities: new Set(["orchestration"]),
+    issuedAt: 1,
+  };
+  const shell = (id: string, projectId: string, snoozed: boolean) => ({
+    ...liveThreadShell(ThreadId.make(id)),
+    projectId: ProjectId.make(projectId),
+    status: "completed" as const,
+    snoozedUntil: snoozed ? DateTime.makeUnsafe("2099-01-01T00:00:00Z") : null,
+  });
+  const shells = [
+    shell("thread:a-snoozed", "project:a", true),
+    shell("thread:a-awake", "project:a", false),
+    shell("thread:b-snoozed", "project:b", true),
+  ];
+  const service = layerOrchestratorService.pipe(
+    Layer.provide(
+      Layer.mergeAll(
         NodeServices.layer,
         Layer.mock(ThreadManagementService.ThreadManagementService)({
-          getThreadShell: () => Effect.succeed(shell),
-          getThreadRecords: () => Effect.succeed(projection),
-          getProjectThreadRecords: () => Effect.succeed(projection),
-          listProjectThreads: () => Effect.succeed([shell]),
-          getTimelinePage: (_threadId, options) => {
-            const position = (options.afterPosition ?? -1) + 1;
-            return Effect.succeed({
-              items: [row(position)],
-              totalItems: 2,
-              hasMore: position < 1,
-            } as never);
-          },
+          listProjectThreads: (input) =>
+            Effect.succeed(
+              shells.filter(
+                (thread) => input.projectId === undefined || thread.projectId === input.projectId,
+              ),
+            ),
         }),
         ServerSettings.layerTest(),
         Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
@@ -2763,40 +2758,27 @@ describe("OrchestratorMcpService thread pull requests", () => {
         Layer.mock(SecretRequests.SecretRequests)({}),
         Layer.mock(RemoteDelegation.RemoteDelegation)({}),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      ),
+    ),
+  );
+
+  it.effect("lists snoozed threads across every project with allProjects", () =>
+    Effect.gen(function* () {
+      const mcp = yield* OrchestratorMcpService.OrchestratorMcpService;
+      const listed = yield* mcp.listThreads(client, {
+        allProjects: true,
+        projectId: ProjectId.make("project:a"),
+        snoozed: true,
+      });
+      assert.equal(listed.projectId, null);
+      assert.deepStrictEqual(
+        listed.threads.map((thread) => [thread.threadId, thread.projectId]),
+        [
+          ["thread:a-snoozed", "project:a"],
+          ["thread:b-snoozed", "project:b"],
+        ],
       );
-      const client: McpInvocationScope = {
-        environmentId: EnvironmentId.make("environment:mcp-many-pull-requests"),
-        requestNamespace: "client:mcp-many-pull-requests",
-        thread: undefined,
-        client: {
-          sessionId: "mcp-many-pull-requests",
-          label: "Claude Code",
-          access: "full-access",
-        },
-        capabilities: new Set(["orchestration"]),
-        issuedAt: 1,
-      };
-      yield* Effect.gen(function* () {
-        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
-        const first = yield* service.readThread(client, { threadId, limit: 1 });
-        assert.isNotNull(first.nextPosition);
-        const second = yield* service.readThread(client, {
-          threadId,
-          limit: 1,
-          afterPosition: first.nextPosition!,
-        });
-        const list = yield* service.listThreads(client, { projectId: shell.projectId });
-        assert.deepEqual(
-          [first, second].map((page) => page.items[0]?.position),
-          [0, 1],
-        );
-        for (const thread of [first.thread, second.thread, list.threads[0]!]) {
-          assert.notProperty(thread, "pullRequests");
-          assert.equal(thread.pullRequestCount, 164);
-          assert.deepEqual(thread.linkedPullRequest, linkedPullRequest);
-        }
-      }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(dependencies))));
-    }),
+    }).pipe(Effect.provide(service)),
   );
 });
 
@@ -2980,5 +2962,111 @@ describe("OrchestratorMcpService thread stop", () => {
         }).pipe(Effect.provide(layerTest));
       }),
     ),
+  );
+});
+
+describe("OrchestratorMcpService thread pull requests", () => {
+  it.effect("counts linked pull requests instead of repeating them on every read and list", () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread:mcp-many-pull-requests");
+      const link = (number: number, source: "agent" | "stack-dismissed" = "agent") => ({
+        host: "github.com",
+        repository: "pingdotgg/t3code",
+        number,
+        url: `https://github.com/pingdotgg/t3code/pull/${number}`,
+        source,
+        linkedAt: "2026-10-21T09:00:00.000Z",
+        snapshot: null,
+        stack: null,
+      });
+      const linkedPullRequest = {
+        projectId: ProjectId.make("project:mcp-test"),
+        repository: "pingdotgg/t3code",
+        number: 1,
+        url: "https://github.com/pingdotgg/t3code/pull/1",
+      };
+      const shell: OrchestrationV2ThreadShell = {
+        ...liveThreadShell(threadId),
+        linkedPullRequest,
+        pullRequests: [
+          ...Array.from({ length: 164 }, (_, index) => link(index + 1)),
+          link(999, "stack-dismissed"),
+        ],
+      };
+      const projection = idleThreadProjection(shell);
+      const row = (position: number) => ({
+        position,
+        visibility: "visible",
+        sourceThreadId: threadId,
+        sourceItemId: `item-${position}`,
+        item: {
+          type: "user_message",
+          messageId: MessageId.make(`message-${position}`),
+          runId: null,
+          status: "completed",
+          title: null,
+          text: `message ${position}`,
+          updatedAt: DateTime.makeUnsafe("2026-10-21T09:00:00Z"),
+        },
+      });
+      const dependencies = Layer.mergeAll(
+        NodeServices.layer,
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
+          getThreadShell: () => Effect.succeed(shell),
+          getThreadRecords: () => Effect.succeed(projection),
+          getProjectThreadRecords: () => Effect.succeed(projection),
+          listProjectThreads: () => Effect.succeed([shell]),
+          getTimelinePage: (_threadId, options) => {
+            const position = (options.afterPosition ?? -1) + 1;
+            return Effect.succeed({
+              items: [row(position)],
+              totalItems: 2,
+              hasMore: position < 1,
+            } as never);
+          },
+        }),
+        ServerSettings.layerTest(),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+          list: () => Effect.succeed([]),
+        }),
+        Layer.mock(ProjectService.ProjectService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      );
+      const client: McpInvocationScope = {
+        environmentId: EnvironmentId.make("environment:mcp-many-pull-requests"),
+        requestNamespace: "client:mcp-many-pull-requests",
+        thread: undefined,
+        client: {
+          sessionId: "mcp-many-pull-requests",
+          label: "Claude Code",
+          access: "full-access",
+        },
+        capabilities: new Set(["orchestration"]),
+        issuedAt: 1,
+      };
+      yield* Effect.gen(function* () {
+        const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+        const first = yield* service.readThread(client, { threadId, limit: 1 });
+        assert.isNotNull(first.nextPosition);
+        const second = yield* service.readThread(client, {
+          threadId,
+          limit: 1,
+          afterPosition: first.nextPosition!,
+        });
+        const list = yield* service.listThreads(client, { projectId: shell.projectId });
+        assert.deepEqual(
+          [first, second].map((page) => page.items[0]?.position),
+          [0, 1],
+        );
+        for (const thread of [first.thread, second.thread, list.threads[0]!]) {
+          assert.notProperty(thread, "pullRequests");
+          assert.equal(thread.pullRequestCount, 164);
+          assert.deepEqual(thread.linkedPullRequest, linkedPullRequest);
+        }
+      }).pipe(Effect.provide(layerOrchestratorService.pipe(Layer.provide(dependencies))));
+    }),
   );
 });
