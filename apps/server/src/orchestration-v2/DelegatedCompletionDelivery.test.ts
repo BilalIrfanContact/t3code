@@ -1610,15 +1610,20 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
       }),
     );
 
-    it.effect.each(["a background command", "a pull request watch"] as const)(
-      "delivers the run %s wake starts after the original result",
-      (source) =>
+    it.effect.each([
+      ["a background command", "after result"],
+      ["a pull request watch", "after result"],
+      ["a pull request watch", "before result"],
+      ["a pull request watch", "while running"],
+    ] as const)(
+      "delivers the result of the run %s wake starts, with the original task %s",
+      ([source, timing]) =>
         Effect.gen(function* () {
           const orchestrator = yield* Orchestrator.OrchestratorV2;
           const eventSink = yield* EventSink.EventSinkV2;
           const requests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
           const now = yield* DateTime.now;
-          const key = source === "a background command" ? "background-wake" : "pr-watch-wake";
+          const key = `${source}-${timing}`;
           const parentThreadId = ThreadId.make(`thread:${key}-parent`);
           const projectId = ProjectId.make(`project:${key}`);
           const parentRunId = RunId.make(`run:${key}-parent`);
@@ -1643,16 +1648,38 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
             runStatus: "completed",
             now,
           });
-          yield* orchestrator.recoverDelegatedTasks;
-          let firstWake = yield* requests.take;
-          while (firstWake.threadId !== parentThreadId) firstWake = yield* requests.take;
-          yield* orchestrator.dispatch({
-            type: "delegated_task.completion-delivery.acknowledge",
-            commandId: CommandId.make(`command:${key}-ack`),
-            parentThreadId,
-            taskId: child.taskId,
-            observedByRunId: parentRunId,
-          });
+          let activeRun: OrchestrationV2Run | undefined;
+          if (timing === "while running") {
+            const messageId = MessageId.make(`message:${key}-active`);
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(`command:${key}-active`),
+              threadId: child.childThreadId,
+              messageId,
+              text: "Keep working on the original task.",
+              attachments: [],
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "agent",
+              creationSource: "mcp",
+            });
+            activeRun = (yield* orchestrator.getThreadProjection(child.childThreadId)).runs.find(
+              (row) => row.userMessageId === messageId,
+            )!;
+          }
+          let firstWakeMessageId: MessageId | undefined;
+          if (timing === "after result") {
+            yield* orchestrator.recoverDelegatedTasks;
+            let firstWake = yield* requests.take;
+            while (firstWake.threadId !== parentThreadId) firstWake = yield* requests.take;
+            yield* orchestrator.dispatch({
+              type: "delegated_task.completion-delivery.acknowledge",
+              commandId: CommandId.make(`command:${key}-ack`),
+              parentThreadId,
+              taskId: child.taskId,
+              observedByRunId: parentRunId,
+            });
+            firstWakeMessageId = firstWake.delegatedCompletion?.messageId;
+          }
           const parentRun = (yield* orchestrator.getThreadProjection(parentThreadId)).runs.find(
             (run) => run.id === parentRunId,
           )!;
@@ -1728,6 +1755,32 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
             (row) => row.userMessageId === wakeMessageId,
           )!;
           assert.isDefined(run.delegatedTaskId);
+          if (timing === "while running") {
+            assert.equal(run.status, "queued");
+            yield* eventSink.write({
+              commandId: reconcileCommandId(`${key}-initial-finished`),
+              events: [
+                runEvent({
+                  threadId: child.childThreadId,
+                  runId: activeRun!.id,
+                  ordinal: activeRun!.ordinal,
+                  status: "completed",
+                  now,
+                }),
+              ],
+            });
+            yield* orchestrator.dispatch({
+              type: "queue.resume",
+              commandId: CommandId.make(`command:${key}-resume`),
+              threadId: child.childThreadId,
+            });
+            assert.notEqual(
+              (yield* orchestrator.getThreadProjection(child.childThreadId)).runs.find(
+                (row) => row.id === run.id,
+              )?.status,
+              "queued",
+            );
+          }
           yield* eventSink.write({
             commandId: reconcileCommandId(`${key}-finished`),
             events: [
@@ -1778,7 +1831,7 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
           let wake = yield* requests.take;
           while (
             wake.threadId !== parentThreadId ||
-            wake.delegatedCompletion?.messageId === firstWake.delegatedCompletion?.messageId
+            wake.delegatedCompletion?.messageId === firstWakeMessageId
           ) {
             wake = yield* requests.take;
           }
